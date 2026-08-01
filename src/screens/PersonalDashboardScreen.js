@@ -1,0 +1,364 @@
+import React, { useCallback, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { Feather, Ionicons } from '@expo/vector-icons';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
+import Avatar from '../components/Avatar';
+import { colors, radius } from '../theme/theme';
+
+function formatDate(dateStr) {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+
+export default function PersonalDashboardScreen({ navigation }) {
+  const { session, profile } = useAuth();
+  const [stats, setStats] = useState({
+    total: 0,
+    ativos: 0,
+    pendentes: 0,
+    treinosSemana: 0,
+    consistencia: 0,
+    metaTreinos: 0,
+  });
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [recent, setRecent] = useState([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    const { data: clients } = await supabase
+      .from('profiles')
+      .select('id, name, status, avatar_url')
+      .eq('personal_id', session.user.id);
+
+    const total = clients?.length || 0;
+    const ativos = clients?.filter((c) => c.status === 'aprovado').length || 0;
+    const pendentes = clients?.filter((c) => c.status === 'pendente').length || 0;
+
+    let treinosSemana = 0;
+    const clientIds = (clients || []).map((c) => c.id);
+    const nameById = Object.fromEntries((clients || []).map((c) => [c.id, c.name]));
+    const avatarById = Object.fromEntries((clients || []).map((c) => [c.id, c.avatar_url]));
+
+    if (clientIds.length > 0) {
+      const seteDiasAtras = new Date();
+      seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
+      const { count } = await supabase
+        .from('workout_logs')
+        .select('id', { count: 'exact', head: true })
+        .in('user_id', clientIds)
+        .gte('started_at', seteDiasAtras.toISOString())
+        .not('finished_at', 'is', null)
+        .is('skipped', false); // Só conta como consistência se NÃO foi pulado
+      treinosSemana = count || 0;
+
+      const { data: recentLogs } = await supabase
+        .from('workout_logs')
+        .select('id, started_at, finished_at, skipped, skip_reason, user_id, workouts(name)') // Puxando o status de pulado
+        .in('user_id', clientIds)
+        .order('started_at', { ascending: false })
+        .limit(5);
+      setRecent(
+        (recentLogs || []).map((log) => ({
+          ...log,
+          studentName: nameById[log.user_id] || 'Aluno',
+          studentAvatar: avatarById[log.user_id] || null,
+        }))
+      );
+    } else {
+      setRecent([]);
+    }
+
+    // Calcula a consistência usando a meta REAL de treinos de cada aluno ativo
+    // (antes assumia 3 por aluno fixo, o que dava número errado pra quem tem
+    // mais ou menos que 3 treinos cadastrados na semana).
+    let metaTreinos = 0;
+    const activeIds = (clients || []).filter((c) => c.status === 'aprovado').map((c) => c.id);
+    if (activeIds.length > 0) {
+      const { count: workoutsCount } = await supabase
+        .from('workouts')
+        .select('id', { count: 'exact', head: true })
+        .in('user_id', activeIds);
+      metaTreinos = workoutsCount || 0;
+    }
+    let percentual = 0;
+    if (metaTreinos > 0) {
+      percentual = Math.min(Math.round((treinosSemana / metaTreinos) * 100), 100);
+    }
+
+    // Busca quantidade de notificações não lidas
+    const { count: unread } = await supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', session.user.id)
+      .eq('is_read', false);
+    setUnreadCount(unread || 0);
+
+    // Atualiza os stats com a consistência calculada
+    setStats({ total, ativos, pendentes, treinosSemana, consistencia: percentual, metaTreinos });
+  }, [session]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  };
+
+  const goToLog = (log) => {
+    navigation.navigate('PersonalStudents', {
+      screen: 'StudentWorkoutLogDetail',
+      params: { logId: log.id, studentName: log.studentName, workoutName: log.workouts?.name },
+    });
+  };
+
+  return (
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{ padding: 20, paddingTop: 60, paddingBottom: 40 }}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
+    >
+      <View style={styles.greetingRow}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+          <Avatar uri={profile?.avatar_url} size={52} />
+          <View style={{ marginLeft: 12, flex: 1 }}>
+            <Text style={styles.greeting} numberOfLines={1}>Olá, {profile?.name || 'treinador'} 👋</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity 
+          style={styles.bellIconContainer} 
+          onPress={() => navigation.navigate('NotificationsScreen')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="notifications-outline" size={24} color={colors.text} />
+          {unreadCount > 0 && (
+            <View style={styles.notificationBadge}>
+              <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
+      <Text style={styles.subtitle}>Aqui está o resumo da sua carteira de alunos</Text>
+
+      <View style={styles.grid}>
+        <View style={[styles.card, styles.cardGreen]}>
+          <Text style={styles.cardValue}>{stats.total}</Text>
+          <Text style={styles.cardLabel}>Alunos no total</Text>
+        </View>
+        <View style={styles.card}>
+          <Text style={styles.cardValue}>{stats.ativos}</Text>
+          <Text style={styles.cardLabel}>Ativos</Text>
+        </View>
+        <View style={[styles.card, stats.pendentes > 0 && styles.cardAlert]}>
+          <Text style={styles.cardValue}>{stats.pendentes}</Text>
+          <Text style={styles.cardLabel}>Pendentes de pagamento</Text>
+        </View>
+        <View style={styles.card}>
+          <Text style={styles.cardValue}>{stats.treinosSemana}</Text>
+          <Text style={styles.cardLabel}>Treinos nos últimos 7 dias</Text>
+        </View>
+      </View>
+
+      {/* Novo Card de Consistência inserido logo após o grid */}
+      <View style={styles.consistencyCard}>
+        <View style={styles.consistencyCircle}>
+          <Text style={styles.consistencyPercentage}>{stats.consistencia}%</Text>
+        </View>
+        <View style={styles.consistencyTextContainer}>
+          <Text style={styles.consistencyTitle}>Consistência semanal</Text>
+          <Text style={styles.consistencyDesc}>
+            {stats.treinosSemana} de {stats.metaTreinos} treinos previstos foram concluídos essa semana.
+          </Text>
+        </View>
+      </View>
+
+      {stats.pendentes > 0 && (
+        <View style={styles.tip}>
+          <Feather name="alert-triangle" size={15} color={colors.amber} />
+          <Text style={styles.tipText}>
+            {' '}Você tem {stats.pendentes} aluno{stats.pendentes > 1 ? 's' : ''} pendente
+            {stats.pendentes > 1 ? 's' : ''} de pagamento. Vá até a aba "Alunos" para revisar.
+          </Text>
+        </View>
+      )}
+
+      <View style={styles.quickActionsRow}>
+        <TouchableOpacity style={styles.quickAction} onPress={() => navigation.navigate('PersonalStudents')} activeOpacity={0.8}>
+          <View style={styles.quickActionIcon}>
+            <Feather name="users" size={19} color={colors.accent} />
+          </View>
+          <Text style={styles.quickActionText}>Ver alunos</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Text style={styles.sectionTitle}>Atividade recente</Text>
+      <Text style={styles.subtitle2}>Toque em um treino para ver o detalhamento completo</Text>
+      {recent.length === 0 ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>
+            Nenhum treino registrado pelos seus alunos ainda. Assim que alguém treinar, aparece aqui.
+          </Text>
+        </View>
+      ) : (
+        recent.map((log) => (
+          <TouchableOpacity key={log.id} style={styles.activityCard} activeOpacity={0.8} onPress={() => goToLog(log)}>
+            <Avatar uri={log.studentAvatar} size={40} />
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.activityTitle}>{log.studentName}</Text>
+              <Text style={styles.activitySubtitle}>
+                {log.workouts?.name || 'Treino removido'} · {formatDate(log.started_at)}
+              </Text>
+            </View>
+            
+            {/* Lógica corrigida para exibir o status correto */}
+            {log.skipped ? (
+              <View style={styles.badgeBlocked}>
+                <Text style={styles.badgeTextBlocked}>Não treinou</Text>
+              </View>
+            ) : log.finished_at ? (
+              <View style={styles.badgeDone}>
+                <Text style={styles.badgeDoneText}>Concluído</Text>
+              </View>
+            ) : (
+              <View style={styles.badgePending}>
+                <Text style={styles.badgePendingText}>Em andamento</Text>
+              </View>
+            )}
+
+          </TouchableOpacity>
+        ))
+      )}
+    </ScrollView>
+  ); // <--- ADICIONE ESTA LINHA
+} // <--- ADICIONE ESTA LINHA
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
+  greetingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  
+  bellIconContainer: {
+    position: 'relative',
+    padding: 8,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.surface,
+  },
+
+  greeting: { fontSize: 18, fontWeight: '800', color: colors.text },
+  subtitle: { fontSize: 14, color: colors.textDim, marginTop: 4, marginBottom: 24 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  card: {
+    width: '48%',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cardGreen: { borderColor: colors.accent },
+  cardAlert: { borderColor: colors.amber },
+  cardValue: { fontSize: 28, fontWeight: '800', color: colors.text },
+  cardLabel: { fontSize: 12, color: colors.textDim, marginTop: 4 },
+  
+  consistencyCard: {
+    flexDirection: 'row',
+    backgroundColor: '#1C293A', 
+    borderRadius: radius.lg,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 20,
+    marginTop: 6,
+  },
+  consistencyCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 4,
+    borderColor: '#3B82F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  consistencyPercentage: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+  consistencyTextContainer: { flex: 1 },
+  consistencyTitle: { color: '#FFF', fontWeight: 'bold', fontSize: 16, marginBottom: 4 },
+  consistencyDesc: { color: '#9CA3AF', fontSize: 13, lineHeight: 18 },
+
+  tip: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.amberGlow,
+    borderRadius: radius.sm,
+    padding: 16,
+    marginTop: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.amber,
+  },
+  tipText: { color: colors.amber, fontSize: 13, lineHeight: 19, flex: 1 },
+  quickActionsRow: { flexDirection: 'row', marginTop: 24, marginBottom: 8 },
+  quickAction: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  quickActionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.accentGlow,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  quickActionText: { color: colors.text, fontSize: 13, fontWeight: '700' },
+  sectionTitle: { color: colors.text, fontSize: 18, fontWeight: '800', marginTop: 24, marginBottom: 12 },
+  subtitle2: { color: colors.textDim2, fontSize: 12, marginTop: -8, marginBottom: 12 },
+  emptyBox: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, padding: 18 },
+  emptyText: { color: colors.textDim, fontSize: 13, lineHeight: 19 },
+  activityCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: 14,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  activityTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  activitySubtitle: { color: colors.textDim, fontSize: 12, marginTop: 2 },
+  badgeDone: { backgroundColor: colors.accentGlow, borderRadius: radius.sm - 4, paddingHorizontal: 10, paddingVertical: 5 },
+  badgeDoneText: { color: colors.accent, fontSize: 11, fontWeight: '700' },
+  badgePending: { backgroundColor: colors.amberGlow, borderRadius: radius.sm - 4, paddingHorizontal: 10, paddingVertical: 5 },
+  badgePendingText: { color: colors.amber, fontSize: 11, fontWeight: '700' },
+  badgeBlocked: { backgroundColor: colors.redGlow, borderRadius: radius.sm - 4, paddingHorizontal: 10, paddingVertical: 5 },
+  badgeTextBlocked: { color: colors.red, fontSize: 11, fontWeight: '700' },
+});

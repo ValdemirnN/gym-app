@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "Meu Treino",
+    "slug": "meu-treino-app",
+    "version": "1.0.0",
+    "scheme": "meutreino",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#111827"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/227ab51d-96d1-4cc0-ab5e-59c5e005a539"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.valdemirnn.meutreino",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Precisamos acessar suas fotos e vídeos pra você poder trocar sua foto de perfil e enviar vídeos de demonstração dos exercícios."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#111827"
+      },
+      "package": "com.valdemirnn.meutreino"
+    },
+    "plugins": [
+      "expo-video",
+      "expo-updates",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Precisamos acessar suas fotos e vídeos pra você poder trocar sua foto de perfil e enviar vídeos de demonstração dos exercícios."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "227ab51d-96d1-4cc0-ab5e-59c5e005a539"
+      }
+    }
+  }
+}
