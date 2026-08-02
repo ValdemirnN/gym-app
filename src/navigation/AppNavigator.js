@@ -41,6 +41,9 @@ import StudentRegistrationScreen from '../screens/StudentRegistrationScreen';
 import StudentSubscriptionScreen from '../screens/StudentSubscriptionScreen';
 import PersonalProfileScreen from '../screens/PersonalProfileScreen';
 import PersonalChatListScreen from '../screens/PersonalChatListScreen';
+import StudentEvaluationsScreen from '../screens/StudentEvaluationsScreen';
+import ChallengesScreen from '../screens/ChallengesScreen';
+import StudentChallengeScreen from '../screens/StudentChallengeScreen';
 
 // <<<--- 1. IMPORTAÇÃO DA NOVA TELA ADICIONADA AQUI --->>>
 import NotificationsScreen from '../screens/NotificationsScreen';
@@ -103,6 +106,7 @@ function HomeStack() {
       <RootStack.Screen name="Chat" component={ChatScreen} />
       {/* <<<--- 3. TELA DE NOTIFICAÇÕES DO ALUNO ADICIONADA AQUI --->>> */}
       <RootStack.Screen name="NotificationsScreen" component={NotificationsScreen} />
+      <RootStack.Screen name="StudentChallenge" component={StudentChallengeScreen} />
     </RootStack.Navigator>
   );
 }
@@ -167,6 +171,7 @@ function PersonalHomeStack() {
     <PersonalHomeStackNav.Navigator screenOptions={{ headerShown: false }}>
       <PersonalHomeStackNav.Screen name="PersonalDashboardMain" component={PersonalDashboardScreen} />
       <PersonalHomeStackNav.Screen name="NotificationsScreen" component={NotificationsScreen} />
+      <PersonalHomeStackNav.Screen name="Challenges" component={ChallengesScreen} />
     </PersonalHomeStackNav.Navigator>
   );
 }
@@ -180,6 +185,7 @@ function PersonalStudentsStack() {
       <PersonalStack.Screen name="CreateWorkoutForStudent" component={CreateWorkoutForStudentScreen} />
       <PersonalStack.Screen name="StudentWorkoutDetail" component={StudentWorkoutDetailScreen} />
       <PersonalStack.Screen name="StudentHistory" component={StudentHistoryScreen} />
+      <PersonalStack.Screen name="StudentEvaluations" component={StudentEvaluationsScreen} />
       <PersonalStack.Screen name="StudentWorkoutLogDetail" component={StudentWorkoutLogDetailScreen} />
       <PersonalStack.Screen name="StudentChat" component={ChatScreen} />
       <PersonalStack.Screen name="StudentHealth" component={StudentHealthScreen} />
