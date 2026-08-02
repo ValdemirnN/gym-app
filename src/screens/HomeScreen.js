@@ -100,6 +100,21 @@ export default function HomeScreen({ navigation }) {
               <Feather name="chevron-right" size={18} color="#04170F" />
             </TouchableOpacity>
 
+            <TouchableOpacity
+              style={[styles.ctaCard, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}
+              onPress={() => navigation.navigate('StudentChallenge')}
+              activeOpacity={0.85}
+            >
+              <View style={[styles.ctaIcon, { backgroundColor: colors.accentGlow }]}>
+                <Feather name="award" size={20} color={colors.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.ctaTitle, { color: colors.text }]}>Desafios</Text>
+                <Text style={[styles.ctaSub, { color: colors.textDim }]}>Veja o ranking e a premiação</Text>
+              </View>
+              <Feather name="chevron-right" size={18} color={colors.textDim2} />
+            </TouchableOpacity>
+
             <View style={styles.sectionHead}>
               <Text style={styles.sectionTitle}>Últimos treinos</Text>
             </View>

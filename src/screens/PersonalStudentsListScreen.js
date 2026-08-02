@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Linking, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
@@ -13,15 +13,41 @@ const STATUS_LABEL = {
   recusado: { text: 'Recusado', color: colors.red, glow: colors.redGlow },
 };
 
+// "Ativo" pra essa tela = aprovado, não excluído, sem bloqueio/expiração.
+// Tudo que não é excluído nem esse "ativo perfeito" cai em "Inativos"
+// (pendente, recusado, bloqueado ou com acesso expirado).
+function getTab(item) {
+  if (item.is_excluded) return 'excluidos';
+  const okAccess = !item.access_blocked && (!item.access_expires_at || new Date(item.access_expires_at) >= new Date());
+  if (item.status === 'aprovado' && okAccess) return 'ativos';
+  return 'inativos';
+}
+
+function openWhatsApp(whatsapp, name) {
+  if (!whatsapp) {
+    Alert.alert('Sem WhatsApp cadastrado', 'Esse aluno não tem número de WhatsApp cadastrado.');
+    return;
+  }
+  const digits = whatsapp.replace(/\D/g, '');
+  const phone = digits.length <= 11 ? '55' + digits : digits; // assume BR se vier sem DDI
+  const msg = encodeURIComponent(`Oi ${name ? name.split(' ')[0] : ''}! `);
+  Linking.openURL(`https://wa.me/${phone}?text=${msg}`).catch(() => {
+    Alert.alert('Erro', 'Não consegui abrir o WhatsApp.');
+  });
+}
+
 export default function PersonalStudentsListScreen({ navigation }) {
   const { session } = useAuth();
   const [students, setStudents] = useState([]);
   const [search, setSearch] = useState('');
+  const [tab, setTab] = useState('ativos');
 
   const load = useCallback(async () => {
     const { data } = await supabase
       .from('profiles')
-      .select('id, name, email, status, created_at, access_expires_at, access_blocked, avatar_url')
+      .select(
+        'id, name, email, whatsapp, status, created_at, access_expires_at, access_blocked, avatar_url, is_excluded'
+      )
       .eq('personal_id', session.user.id)
       .order('name');
     setStudents(data || []);
@@ -42,7 +68,45 @@ export default function PersonalStudentsListScreen({ navigation }) {
     return { text: 'Ativo', color: colors.accent, glow: colors.accentGlow };
   };
 
-  const filtered = students.filter((s) => (s.name || '').toLowerCase().includes(search.toLowerCase()));
+  const counts = students.reduce(
+    (acc, s) => {
+      acc[getTab(s)] += 1;
+      return acc;
+    },
+    { ativos: 0, inativos: 0, excluidos: 0 }
+  );
+
+  const filtered = students
+    .filter((s) => getTab(s) === tab)
+    .filter((s) => (s.name || '').toLowerCase().includes(search.toLowerCase()));
+
+  const toggleExcluded = async (item) => {
+    const willExclude = !item.is_excluded;
+    Alert.alert(
+      willExclude ? 'Excluir aluno' : 'Reativar aluno',
+      willExclude
+        ? `${item.name} vai sair da sua lista de ativos, mas o cadastro fica guardado — você pode reativar quando quiser.`
+        : `${item.name} volta pra sua lista normal.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: willExclude ? 'Excluir' : 'Reativar',
+          style: willExclude ? 'destructive' : 'default',
+          onPress: async () => {
+            const { error } = await supabase
+              .from('profiles')
+              .update({ is_excluded: willExclude, excluded_at: willExclude ? new Date().toISOString() : null })
+              .eq('id', item.id);
+            if (error) {
+              Alert.alert('Erro', error.message);
+              return;
+            }
+            load();
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -59,14 +123,32 @@ export default function PersonalStudentsListScreen({ navigation }) {
         />
       </View>
 
+      <View style={styles.tabs}>
+        <TouchableOpacity style={[styles.tab, tab === 'ativos' && styles.tabActive]} onPress={() => setTab('ativos')}>
+          <Text style={[styles.tabText, tab === 'ativos' && styles.tabTextActive]}>Ativos: {counts.ativos}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.tab, tab === 'inativos' && styles.tabActive]} onPress={() => setTab('inativos')}>
+          <Text style={[styles.tabText, tab === 'inativos' && styles.tabTextActive]}>Inativos: {counts.inativos}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, tab === 'excluidos' && styles.tabActive]}
+          onPress={() => setTab('excluidos')}
+        >
+          <Text style={[styles.tabText, tab === 'excluidos' && styles.tabTextActive]}>Excluídos: {counts.excluidos}</Text>
+        </TouchableOpacity>
+      </View>
+
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingBottom: 20 }}
         ListEmptyComponent={
           <Text style={styles.empty}>
-            Nenhum aluno vinculado ainda. Compartilhe seu app com seus clientes — ao se cadastrarem, eles escolhem
-            você como Personal.
+            {tab === 'ativos'
+              ? 'Nenhum aluno ativo por aqui ainda.'
+              : tab === 'inativos'
+              ? 'Nenhum aluno inativo no momento.'
+              : 'Nenhum aluno excluído.'}
           </Text>
         }
         renderItem={({ item }) => {
@@ -82,10 +164,31 @@ export default function PersonalStudentsListScreen({ navigation }) {
                 <Text style={styles.cardTitle}>{item.name || 'Aluno sem nome'}</Text>
                 <Text style={styles.cardSubtitle}>{item.email}</Text>
               </View>
-              <View style={[styles.badge, { backgroundColor: status.glow }]}>
-                <Text style={[styles.badgeText, { color: status.color }]}>{status.text}</Text>
-              </View>
-              <Feather name="chevron-right" size={18} color={colors.textDim2} />
+              {!item.is_excluded && (
+                <View style={[styles.badge, { backgroundColor: status.glow }]}>
+                  <Text style={[styles.badgeText, { color: status.color }]}>{status.text}</Text>
+                </View>
+              )}
+              {tab !== 'excluidos' && (
+                <TouchableOpacity
+                  style={styles.whatsappButton}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    openWhatsApp(item.whatsapp, item.name);
+                  }}
+                >
+                  <Feather name="message-circle" size={18} color="#25D366" />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={styles.excludeButton}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  toggleExcluded(item);
+                }}
+              >
+                <Feather name={item.is_excluded ? 'rotate-ccw' : 'trash-2'} size={16} color={colors.textDim2} />
+              </TouchableOpacity>
             </TouchableOpacity>
           );
         }}
@@ -105,9 +208,21 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.sm,
     paddingHorizontal: 14,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   search: { flex: 1, color: colors.text, paddingVertical: 12, fontSize: 15 },
+  tabs: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  tab: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  tabActive: { borderColor: colors.accent, backgroundColor: colors.accentGlow },
+  tabText: { color: colors.textDim, fontSize: 12.5, fontWeight: '600' },
+  tabTextActive: { color: colors.accent },
   empty: { color: colors.textDim, textAlign: 'center', marginTop: 40, fontSize: 14, lineHeight: 20 },
   card: {
     backgroundColor: colors.surface,
@@ -118,10 +233,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
   cardTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
   cardSubtitle: { color: colors.textDim, fontSize: 12, marginTop: 2 },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill },
   badgeText: { fontSize: 11, fontWeight: '700' },
+  whatsappButton: { padding: 6 },
+  excludeButton: { padding: 6 },
 });

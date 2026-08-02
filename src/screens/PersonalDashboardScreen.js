@@ -27,10 +27,14 @@ export default function PersonalDashboardScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const { data: clients } = await supabase
+    const { data: clientsRaw } = await supabase
       .from('profiles')
-      .select('id, name, status, avatar_url')
+      .select('id, name, status, avatar_url, is_excluded')
       .eq('personal_id', session.user.id);
+
+    // Alunos excluídos não entram nas contagens do dashboard (mas continuam
+    // cadastrados, só saem das listas/estatísticas de quem tá ativo).
+    const clients = (clientsRaw || []).filter((c) => !c.is_excluded);
 
     const total = clients?.length || 0;
     const ativos = clients?.filter((c) => c.status === 'aprovado').length || 0;
@@ -197,6 +201,12 @@ export default function PersonalDashboardScreen({ navigation }) {
             <Feather name="users" size={19} color={colors.accent} />
           </View>
           <Text style={styles.quickActionText}>Ver alunos</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.quickAction} onPress={() => navigation.navigate('Challenges')} activeOpacity={0.8}>
+          <View style={styles.quickActionIcon}>
+            <Feather name="award" size={19} color={colors.accent} />
+          </View>
+          <Text style={styles.quickActionText}>Desafios</Text>
         </TouchableOpacity>
       </View>
 

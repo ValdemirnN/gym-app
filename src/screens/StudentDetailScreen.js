@@ -15,6 +15,7 @@ const MENU = [
   { key: 'StudentChat', icon: 'message-circle', title: 'Conversar', desc: 'Chat direto com o aluno' },
   { key: 'StudentWorkouts', icon: 'zap', title: 'Treinos', desc: 'Montar e gerenciar os treinos do aluno' },
   { key: 'StudentHistory', icon: 'trending-up', title: 'Histórico de treinos', desc: 'Sessões realizadas e evolução' },
+  { key: 'StudentEvaluations', icon: 'bar-chart-2', title: 'Avaliações físicas', desc: 'Medidas, peso e metas do aluno' },
   { key: 'StudentHealth', icon: 'heart', title: 'Dados de saúde', desc: 'Condições e restrições informadas' },
   { key: 'StudentRegistration', icon: 'clipboard', title: 'Dados cadastrais', desc: 'Nome, e-mail e informações da conta' },
   { key: 'StudentSubscription', icon: 'credit-card', title: 'Assinatura', desc: 'Pagamentos e status de acesso' },
@@ -40,9 +41,32 @@ export default function StudentDetailScreen({ route, navigation }) {
   const [updatingAccess, setUpdatingAccess] = useState(false);
   const [consistency, setConsistency] = useState({ percentual: 0, treinosSemana: 0, metaTreinos: 0, exerciciosSemana: 0 });
 
+  const [weekDays, setWeekDays] = useState([false, false, false, false, false, false, false]); // dom..sáb
+
   const load = useCallback(async () => {
     const { data } = await supabase.from('profiles').select('*').eq('id', studentId).single();
     setStudent(data);
+
+    // Calendário semanal (bolinhas): marca o DIA em que o aluno concluiu
+    // pelo menos um treino — não importa qual treino era originalmente
+    // previsto pra aquele dia, se ele treinou na segunda, a segunda "fecha".
+    const startOfWeek = new Date();
+    startOfWeek.setHours(0, 0, 0, 0);
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()); // domingo dessa semana
+    const { data: weekLogs } = await supabase
+      .from('workout_logs')
+      .select('started_at')
+      .eq('user_id', studentId)
+      .gte('started_at', startOfWeek.toISOString())
+      .not('finished_at', 'is', null)
+      .is('skipped', false);
+
+    const days = [false, false, false, false, false, false, false];
+    (weekLogs || []).forEach((log) => {
+      const d = new Date(log.started_at).getDay();
+      days[d] = true;
+    });
+    setWeekDays(days);
 
     // Consistência do ALUNO (não confundir com a média geral do dashboard):
     // meta = quantos treinos esse aluno tem cadastrados na semana; feitos =
@@ -136,6 +160,20 @@ export default function StudentDetailScreen({ route, navigation }) {
             {consistency.treinosSemana} de {consistency.metaTreinos} treinos previstos concluídos · {consistency.exerciciosSemana} exercício
             {consistency.exerciciosSemana === 1 ? '' : 's'} executados
           </Text>
+        </View>
+      </View>
+
+      <View style={styles.weekCard}>
+        <Text style={styles.weekTitle}>Semana atual</Text>
+        <View style={styles.weekRow}>
+          {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((label, i) => (
+            <View key={i} style={styles.weekDayCol}>
+              <View style={[styles.weekDot, weekDays[i] && styles.weekDotFilled]}>
+                {weekDays[i] && <Feather name="check" size={12} color="#04170F" />}
+              </View>
+              <Text style={styles.weekDayLabel}>{label}</Text>
+            </View>
+          ))}
         </View>
       </View>
 
@@ -234,6 +272,28 @@ const styles = StyleSheet.create({
   consistencyTextContainer: { flex: 1 },
   consistencyTitle: { color: '#FFF', fontWeight: 'bold', fontSize: 15, marginBottom: 4 },
   consistencyDesc: { color: '#9CA3AF', fontSize: 12.5, lineHeight: 17 },
+  weekCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: 14,
+    marginTop: 12,
+  },
+  weekTitle: { color: colors.textDim, fontSize: 12, fontWeight: '700', marginBottom: 10 },
+  weekRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  weekDayCol: { alignItems: 'center', gap: 6 },
+  weekDot: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weekDotFilled: { backgroundColor: colors.accent, borderColor: colors.accent },
+  weekDayLabel: { color: colors.textDim2, fontSize: 10.5, fontWeight: '600' },
   menuCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,
