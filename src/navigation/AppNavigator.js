@@ -44,6 +44,10 @@ import PersonalChatListScreen from '../screens/PersonalChatListScreen';
 import StudentEvaluationsScreen from '../screens/StudentEvaluationsScreen';
 import ChallengesScreen from '../screens/ChallengesScreen';
 import StudentChallengeScreen from '../screens/StudentChallengeScreen';
+import FaqScreen from '../screens/FaqScreen';
+import ParqScreen from '../screens/ParqScreen';
+import StudentParqViewScreen from '../screens/StudentParqViewScreen';
+import StudentOwnSubscriptionScreen from '../screens/StudentOwnSubscriptionScreen';
 
 // <<<--- 1. IMPORTAÇÃO DA NOVA TELA ADICIONADA AQUI --->>>
 import NotificationsScreen from '../screens/NotificationsScreen';
@@ -63,15 +67,15 @@ const AdminTab = createBottomTabNavigator();
 const tabScreenOptions = {
   headerShown: false,
   tabBarStyle: {
-    backgroundColor: colors.bg,
-    borderTopColor: colors.border,
+    backgroundColor: colors.surface3,
+    borderTopColor: colors.border2,
     borderTopWidth: 1,
     height: 64,
     paddingTop: 8,
     paddingBottom: 8,
   },
   tabBarActiveTintColor: colors.accent,
-  tabBarInactiveTintColor: colors.textDim2,
+  tabBarInactiveTintColor: colors.textDim,
   tabBarLabelStyle: { fontSize: 10.5, fontWeight: '600' },
 };
 
@@ -107,6 +111,9 @@ function HomeStack() {
       {/* <<<--- 3. TELA DE NOTIFICAÇÕES DO ALUNO ADICIONADA AQUI --->>> */}
       <RootStack.Screen name="NotificationsScreen" component={NotificationsScreen} />
       <RootStack.Screen name="StudentChallenge" component={StudentChallengeScreen} />
+      <RootStack.Screen name="Faq" component={FaqScreen} />
+      <RootStack.Screen name="Parq" component={ParqScreen} />
+      <RootStack.Screen name="Faturas" component={StudentOwnSubscriptionScreen} />
     </RootStack.Navigator>
   );
 }
@@ -172,6 +179,7 @@ function PersonalHomeStack() {
       <PersonalHomeStackNav.Screen name="PersonalDashboardMain" component={PersonalDashboardScreen} />
       <PersonalHomeStackNav.Screen name="NotificationsScreen" component={NotificationsScreen} />
       <PersonalHomeStackNav.Screen name="Challenges" component={ChallengesScreen} />
+      <PersonalHomeStackNav.Screen name="Faq" component={FaqScreen} />
     </PersonalHomeStackNav.Navigator>
   );
 }
@@ -186,6 +194,7 @@ function PersonalStudentsStack() {
       <PersonalStack.Screen name="StudentWorkoutDetail" component={StudentWorkoutDetailScreen} />
       <PersonalStack.Screen name="StudentHistory" component={StudentHistoryScreen} />
       <PersonalStack.Screen name="StudentEvaluations" component={StudentEvaluationsScreen} />
+      <PersonalStack.Screen name="StudentParqView" component={StudentParqViewScreen} />
       <PersonalStack.Screen name="StudentWorkoutLogDetail" component={StudentWorkoutLogDetailScreen} />
       <PersonalStack.Screen name="StudentChat" component={ChatScreen} />
       <PersonalStack.Screen name="StudentHealth" component={StudentHealthScreen} />
