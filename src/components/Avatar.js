@@ -5,7 +5,7 @@ const DEFAULT_AVATAR = require('../../assets/default-avatar.png');
 
 // Foto de perfil redonda. Se `uri` não vier (usuário não colocou foto),
 // cai pro ícone padrão. Ao tocar, abre em tela cheia.
-export default function Avatar({ uri, size = 48 }) {
+export default function Avatar({ uri, size = 48, ringColor }) {
   const [expanded, setExpanded] = useState(false);
   const source = uri ? { uri } : DEFAULT_AVATAR;
 
@@ -14,7 +14,11 @@ export default function Avatar({ uri, size = 48 }) {
       <TouchableOpacity activeOpacity={0.8} onPress={() => setExpanded(true)}>
         <Image
           source={source}
-          style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}
+          style={[
+            styles.avatar,
+            { width: size, height: size, borderRadius: size / 2 },
+            ringColor ? { borderWidth: 2, borderColor: ringColor } : null,
+          ]}
         />
       </TouchableOpacity>
 
