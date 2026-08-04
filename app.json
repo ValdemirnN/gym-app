@@ -38,6 +38,7 @@
     "plugins": [
       "expo-video",
       "expo-updates",
+      "expo-notifications",
       [
         "expo-image-picker",
         {
