@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, ActivityIndicator } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { File } from 'expo-file-system';
 import { supabase } from '../lib/supabase';
@@ -65,6 +66,7 @@ function FieldCard({ label, value }) {
 }
 
 export default function ProfileScreen() {
+  const navigation = useNavigation();
   const { session, profile, signOut, refreshProfile } = useAuth();
 
   const [editing, setEditing] = useState(false);
@@ -366,6 +368,20 @@ export default function ProfileScreen() {
 
         <Text style={styles.eyebrow}>Liberação médica</Text>
         <FieldCard label="Atestado / termo" value={clearanceLabel} />
+
+        <TouchableOpacity
+          style={styles.helpButton}
+          onPress={() => navigation.navigate('Home', { screen: 'Parq' })}
+        >
+          <Text style={styles.helpButtonText}>Questionário de saúde (PAR-Q)</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.helpButton}
+          onPress={() => navigation.navigate('Home', { screen: 'Faq', params: { role: 'aluno' } })}
+        >
+          <Text style={styles.helpButtonText}>Dúvidas e suporte</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.logoutButton} onPress={signOut}>
           <Text style={styles.logoutText}>Sair da conta</Text>
@@ -774,4 +790,14 @@ const styles = StyleSheet.create({
   saveButtonText: { color: '#04170F', fontWeight: 'bold', fontSize: 16 },
   logoutButton: { padding: 16, alignItems: 'center', marginTop: 20 },
   logoutText: { color: colors.red, fontSize: 15, fontWeight: '700' },
+  helpButton: {
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 24,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+  },
+  helpButtonText: { color: colors.text, fontSize: 14, fontWeight: '600' },
 });

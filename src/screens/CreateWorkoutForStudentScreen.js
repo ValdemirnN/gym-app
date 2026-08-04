@@ -38,6 +38,10 @@ export default function CreateWorkoutForStudentScreen({ route, navigation }) {
   const { session } = useAuth();
   const [name, setName] = useState(initialWorkoutName || '');
   const [dayOfWeek, setDayOfWeek] = useState(null);
+  const [goal, setGoal] = useState('');
+  const [level, setLevel] = useState(null); // 'iniciante' | 'intermediario' | 'avancado'
+  const [periodStart, setPeriodStart] = useState('');
+  const [periodEnd, setPeriodEnd] = useState('');
   const [exercises, setExercises] = useState([]);
   const [selected, setSelected] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -46,6 +50,8 @@ export default function CreateWorkoutForStudentScreen({ route, navigation }) {
 
   const [newExerciseName, setNewExerciseName] = useState('');
   const [newExerciseGroup, setNewExerciseGroup] = useState('');
+  const [newExerciseType, setNewExerciseType] = useState('forca'); // 'forca' | 'cardio'
+  const [newExerciseInstructions, setNewExerciseInstructions] = useState('');
   const [addingExercise, setAddingExercise] = useState(false);
 
   const [videos, setVideos] = useState([]);
@@ -61,7 +67,10 @@ export default function CreateWorkoutForStudentScreen({ route, navigation }) {
   const [subsSearch, setSubsSearch] = useState('');
 
   const loadExercises = async () => {
-    const { data } = await supabase.from('exercises').select('id, name, muscle_group, video_id').order('muscle_group');
+    const { data } = await supabase
+      .from('exercises')
+      .select('id, name, muscle_group, video_id, exercise_type')
+      .order('muscle_group');
     setExercises(data || []);
   };
 
@@ -81,15 +90,23 @@ export default function CreateWorkoutForStudentScreen({ route, navigation }) {
   useEffect(() => {
     if (!isEditing) return;
     const loadWorkout = async () => {
-      const { data: workout } = await supabase.from('workouts').select('name, day_of_week').eq('id', workoutId).single();
+      const { data: workout } = await supabase
+        .from('workouts')
+        .select('name, day_of_week, goal, level, period_start, period_end')
+        .eq('id', workoutId)
+        .single();
       if (workout) {
         setName(workout.name);
         setDayOfWeek(workout.day_of_week);
+        setGoal(workout.goal || '');
+        setLevel(workout.level || null);
+        setPeriodStart(workout.period_start || '');
+        setPeriodEnd(workout.period_end || '');
       }
       const { data: items } = await supabase
         .from('workout_exercises')
         .select(
-          'target_sets, target_reps, order_index, exercises(id, name), workout_exercise_substitutes(substitute_exercise_id, exercises:substitute_exercise_id(id, name))'
+          'target_sets, target_reps, target_duration_minutes, target_distance_km, target_intensity, order_index, combo_group, exercises(id, name, exercise_type, instructions), workout_exercise_substitutes(substitute_exercise_id, exercises:substitute_exercise_id(id, name))'
         )
         .eq('workout_id', workoutId)
         .order('order_index');
@@ -98,8 +115,14 @@ export default function CreateWorkoutForStudentScreen({ route, navigation }) {
           items.map((it) => ({
             exercise_id: it.exercises.id,
             name: it.exercises.name,
+            exercise_type: it.exercises.exercise_type,
+            instructions: it.exercises.instructions,
+            combo_group: it.combo_group,
             target_sets: it.target_sets,
             target_reps: it.target_reps,
+            target_duration_minutes: it.target_duration_minutes,
+            target_distance_km: it.target_distance_km,
+            target_intensity: it.target_intensity,
           }))
         );
         const subsMap = {};
@@ -166,6 +189,8 @@ export default function CreateWorkoutForStudentScreen({ route, navigation }) {
         muscle_group: newExerciseGroup.trim() || null,
         video_id: selectedVideo?.id || null,
         owner_id: session.user.id,
+        exercise_type: newExerciseType,
+        instructions: newExerciseInstructions.trim() || null,
       })
       .select()
       .single();
@@ -180,6 +205,8 @@ export default function CreateWorkoutForStudentScreen({ route, navigation }) {
     toggleExercise(data);
     setNewExerciseName('');
     setNewExerciseGroup('');
+    setNewExerciseType('forca');
+    setNewExerciseInstructions('');
     setVideoSearch('');
     setSelectedVideo(null);
   };
@@ -188,13 +215,37 @@ export default function CreateWorkoutForStudentScreen({ route, navigation }) {
     setSelected((prev) => {
       const exists = prev.find((e) => e.exercise_id === exercise.id);
       if (exists) return prev.filter((e) => e.exercise_id !== exercise.id);
-      return [...prev, { exercise_id: exercise.id, name: exercise.name, target_sets: 3, target_reps: 12 }];
+      if (exercise.exercise_type === 'cardio') {
+        return [
+          ...prev,
+          {
+            exercise_id: exercise.id,
+            name: exercise.name,
+            exercise_type: 'cardio',
+            combo_group: null,
+            target_duration_minutes: 20,
+            target_distance_km: null,
+            target_intensity: 'moderada',
+          },
+        ];
+      }
+      return [
+        ...prev,
+        { exercise_id: exercise.id, name: exercise.name, exercise_type: 'forca', combo_group: null, target_sets: 3, target_reps: 12 },
+      ];
     });
   };
 
   const updateTarget = (exerciseId, field, value) => {
+    const isNumericField = field === 'target_sets' || field === 'target_reps';
+    const isDecimalField = field === 'target_duration_minutes' || field === 'target_distance_km';
     setSelected((prev) =>
-      prev.map((e) => (e.exercise_id === exerciseId ? { ...e, [field]: parseInt(value) || 0 } : e))
+      prev.map((e) => {
+        if (e.exercise_id !== exerciseId) return e;
+        if (isNumericField) return { ...e, [field]: parseInt(value) || 0 };
+        if (isDecimalField) return { ...e, [field]: value === '' ? null : parseFloat(value.replace(',', '.')) || 0 };
+        return { ...e, [field]: value };
+      })
     );
   };
 
@@ -225,11 +276,20 @@ export default function CreateWorkoutForStudentScreen({ route, navigation }) {
     }
     setSaving(true);
 
+    const workoutFields = {
+      name,
+      day_of_week: dayOfWeek,
+      goal: goal.trim() || null,
+      level,
+      period_start: periodStart.trim() || null,
+      period_end: periodEnd.trim() || null,
+    };
+
     let workout;
     if (isEditing) {
       const { data, error } = await supabase
         .from('workouts')
-        .update({ name, day_of_week: dayOfWeek })
+        .update(workoutFields)
         .eq('id', workoutId)
         .select()
         .single();
@@ -243,7 +303,7 @@ export default function CreateWorkoutForStudentScreen({ route, navigation }) {
     } else {
       const { data, error } = await supabase
         .from('workouts')
-        .insert({ user_id: studentId, created_by: session.user.id, name, day_of_week: dayOfWeek })
+        .insert({ user_id: studentId, created_by: session.user.id, ...workoutFields })
         .select()
         .single();
       if (error) {
@@ -257,9 +317,13 @@ export default function CreateWorkoutForStudentScreen({ route, navigation }) {
     const rows = selected.map((e, index) => ({
       workout_id: workout.id,
       exercise_id: e.exercise_id,
-      target_sets: e.target_sets,
-      target_reps: e.target_reps,
       order_index: index,
+      combo_group: e.combo_group || null,
+      target_sets: e.exercise_type === 'cardio' ? null : e.target_sets,
+      target_reps: e.exercise_type === 'cardio' ? null : e.target_reps,
+      target_duration_minutes: e.exercise_type === 'cardio' ? e.target_duration_minutes : null,
+      target_distance_km: e.exercise_type === 'cardio' ? e.target_distance_km : null,
+      target_intensity: e.exercise_type === 'cardio' ? e.target_intensity : null,
     }));
 
     const { data: insertedRows, error: insertError } = await supabase
@@ -315,7 +379,15 @@ export default function CreateWorkoutForStudentScreen({ route, navigation }) {
         <Text style={styles.title}>{isEditing ? 'Editar Treino' : 'Novo Treino'}</Text>
         <Text style={styles.subtitle}>para {studentName}</Text>
 
-        <TextInput
+        <View style={styles.blockCard}>
+          <View style={styles.blockCardHeader}>
+            <View style={styles.blockCardIcon}>
+              <Feather name="layers" size={16} color="#fff" />
+            </View>
+            <Text style={styles.blockCardTitle}>Informações do treino</Text>
+          </View>
+
+          <TextInput
           style={styles.input}
           placeholder="Nome do treino (ex: Treino A - Peito)"
           placeholderTextColor={colors.textDim2}
@@ -334,6 +406,51 @@ export default function CreateWorkoutForStudentScreen({ route, navigation }) {
               <Text style={[styles.dayChipText, dayOfWeek === d.key && styles.dayChipTextSelected]}>{d.label}</Text>
             </TouchableOpacity>
           ))}
+        </View>
+
+        <Text style={styles.sectionLabel}>Objetivo (opcional, ex: Hipertrofia):</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Hipertrofia, emagrecimento, condicionamento..."
+          placeholderTextColor={colors.textDim2}
+          value={goal}
+          onChangeText={setGoal}
+        />
+
+        <Text style={styles.sectionLabel}>Nível (opcional):</Text>
+        <View style={styles.dayRow}>
+          {[
+            { key: 'iniciante', label: 'Iniciante' },
+            { key: 'intermediario', label: 'Intermediário' },
+            { key: 'avancado', label: 'Avançado' },
+          ].map((l) => (
+            <TouchableOpacity
+              key={l.key}
+              style={[styles.dayChip, level === l.key && styles.dayChipSelected]}
+              onPress={() => setLevel(level === l.key ? null : l.key)}
+            >
+              <Text style={[styles.dayChipText, level === l.key && styles.dayChipTextSelected]}>{l.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.sectionLabel}>Período do bloco (opcional, AAAA-MM-DD):</Text>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <TextInput
+            style={[styles.input, { flex: 1 }]}
+            placeholder="Início"
+            placeholderTextColor={colors.textDim2}
+            value={periodStart}
+            onChangeText={setPeriodStart}
+          />
+          <TextInput
+            style={[styles.input, { flex: 1 }]}
+            placeholder="Fim"
+            placeholderTextColor={colors.textDim2}
+            value={periodEnd}
+            onChangeText={setPeriodEnd}
+          />
+          </View>
         </View>
 
         {selected.length > 0 && (
@@ -357,7 +474,12 @@ export default function CreateWorkoutForStudentScreen({ route, navigation }) {
           </View>
         )}
 
-        <Text style={styles.sectionLabel}>Selecione os exercícios:</Text>
+        <View style={styles.blockCardHeader}>
+          <View style={[styles.blockCardIcon, { backgroundColor: colors.blue }]}>
+            <Feather name="search" size={16} color="#fff" />
+          </View>
+          <Text style={styles.blockCardTitle}>Selecione os exercícios</Text>
+        </View>
 
         <TextInput
           style={styles.input}
@@ -385,6 +507,33 @@ export default function CreateWorkoutForStudentScreen({ route, navigation }) {
               onChangeText={setNewExerciseGroup}
             />
           </View>
+
+          <View style={styles.typeToggleRow}>
+            <TouchableOpacity
+              style={[styles.typeToggle, newExerciseType === 'forca' && styles.typeToggleActive]}
+              onPress={() => setNewExerciseType('forca')}
+            >
+              <Feather name="zap" size={13} color={newExerciseType === 'forca' ? '#04170F' : colors.textDim} />
+              <Text style={[styles.typeToggleText, newExerciseType === 'forca' && styles.typeToggleTextActive]}> Força</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.typeToggle, newExerciseType === 'cardio' && styles.typeToggleActive]}
+              onPress={() => setNewExerciseType('cardio')}
+            >
+              <Feather name="heart" size={13} color={newExerciseType === 'cardio' ? '#04170F' : colors.textDim} />
+              <Text style={[styles.typeToggleText, newExerciseType === 'cardio' && styles.typeToggleTextActive]}> Cardio</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={[styles.sectionLabel, { marginTop: 10 }]}>Instruções de execução (opcional):</Text>
+          <TextInput
+            style={[styles.input, { height: 60 }]}
+            placeholder="Ex: Mantenha a coluna neutra, desça controlado..."
+            placeholderTextColor={colors.textDim2}
+            value={newExerciseInstructions}
+            onChangeText={setNewExerciseInstructions}
+            multiline
+          />
 
           <Text style={[styles.sectionLabel, { marginTop: 12 }]}>Vídeo de demonstração (opcional):</Text>
           {selectedVideo ? (
@@ -446,53 +595,130 @@ export default function CreateWorkoutForStudentScreen({ route, navigation }) {
           const selectedItem = selected.find((e) => e.exercise_id === item.id);
           const subs = substitutesByExercise[item.id] || [];
           return (
-            <View key={item.id} style={styles.exerciseRow}>
+            <View
+              key={item.id}
+              style={[
+                styles.exerciseRow,
+                item.exercise_type === 'cardio' && { borderLeftWidth: 3, borderLeftColor: colors.amber },
+              ]}
+            >
               <View style={styles.exerciseTopRow}>
                 <TouchableOpacity style={styles.exerciseInfo} onPress={() => toggleExercise(item)}>
                   <View style={[styles.checkbox, isSelected(item.id) && styles.checkboxChecked]}>
                     {isSelected(item.id) && <Feather name="check" size={13} color="#04170F" />}
                   </View>
                   <View>
-                    <Text style={styles.exerciseName}>{item.name}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={styles.exerciseName}>{item.name}</Text>
+                      {item.exercise_type === 'cardio' && (
+                        <View style={styles.cardioBadge}>
+                          <Feather name="heart" size={10} color={colors.amber} />
+                          <Text style={styles.cardioBadgeText}> Cardio</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text style={styles.exerciseGroup}>{item.muscle_group}</Text>
                   </View>
                 </TouchableOpacity>
 
-                {selectedItem && (
-                  <View style={styles.targetInputs}>
+                {selectedItem && selectedItem.exercise_type === 'cardio' ? (
+                  <View style={styles.cardioInputs}>
                     <TextInput
-                      style={styles.smallInput}
+                      style={styles.cardioInput}
                       keyboardType="number-pad"
-                      inputAccessoryViewID={Platform.OS === 'ios' ? DONE_ACCESSORY_ID : undefined}
-                      value={String(selectedItem.target_sets)}
-                      onChangeText={(v) => updateTarget(item.id, 'target_sets', v)}
+                      placeholder="min"
+                      placeholderTextColor={colors.textDim2}
+                      value={selectedItem.target_duration_minutes ? String(selectedItem.target_duration_minutes) : ''}
+                      onChangeText={(v) => updateTarget(item.id, 'target_duration_minutes', v)}
                     />
-                    <Text style={styles.x}>x</Text>
                     <TextInput
-                      style={styles.smallInput}
-                      keyboardType="number-pad"
-                      inputAccessoryViewID={Platform.OS === 'ios' ? DONE_ACCESSORY_ID : undefined}
-                      value={String(selectedItem.target_reps)}
-                      onChangeText={(v) => updateTarget(item.id, 'target_reps', v)}
+                      style={styles.cardioInput}
+                      keyboardType="decimal-pad"
+                      placeholder="km"
+                      placeholderTextColor={colors.textDim2}
+                      value={selectedItem.target_distance_km ? String(selectedItem.target_distance_km) : ''}
+                      onChangeText={(v) => updateTarget(item.id, 'target_distance_km', v)}
                     />
                   </View>
+                ) : (
+                  selectedItem && (
+                    <View style={styles.targetInputs}>
+                      <TextInput
+                        style={styles.smallInput}
+                        keyboardType="number-pad"
+                        inputAccessoryViewID={Platform.OS === 'ios' ? DONE_ACCESSORY_ID : undefined}
+                        value={String(selectedItem.target_sets)}
+                        onChangeText={(v) => updateTarget(item.id, 'target_sets', v)}
+                      />
+                      <Text style={styles.x}>x</Text>
+                      <TextInput
+                        style={styles.smallInput}
+                        keyboardType="number-pad"
+                        inputAccessoryViewID={Platform.OS === 'ios' ? DONE_ACCESSORY_ID : undefined}
+                        value={String(selectedItem.target_reps)}
+                        onChangeText={(v) => updateTarget(item.id, 'target_reps', v)}
+                      />
+                    </View>
+                  )
                 )}
               </View>
 
+              {selectedItem && selectedItem.exercise_type === 'cardio' && (
+                <View style={styles.intensityRow}>
+                  {['leve', 'moderada', 'intensa'].map((level) => (
+                    <TouchableOpacity
+                      key={level}
+                      style={[styles.intensityChip, selectedItem.target_intensity === level && styles.intensityChipActive]}
+                      onPress={() => updateTarget(item.id, 'target_intensity', level)}
+                    >
+                      <Text
+                        style={[
+                          styles.intensityChipText,
+                          selectedItem.target_intensity === level && styles.intensityChipTextActive,
+                        ]}
+                      >
+                        {level}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {selectedItem && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <TouchableOpacity
+                    style={styles.subsButton}
+                    onPress={() => {
+                      setSubsSearch('');
+                      setSubsTarget({ exerciseId: item.id, name: item.name });
+                    }}
+                  >
+                    <Feather name="repeat" size={12} color={subs.length > 0 ? colors.accent : colors.textDim} />
+                    <Text style={styles.subsButtonText}>
+                      {' '}
+                      {subs.length > 0
+                        ? 'Substituto' + (subs.length > 1 ? 's' : '') + ': ' + subs.map((s) => s.name).join(', ')
+                        : 'Cadastrar substituto (opcional)'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
               {selectedItem && (
                 <TouchableOpacity
-                  style={styles.subsButton}
+                  style={styles.comboToggle}
                   onPress={() => {
-                    setSubsSearch('');
-                    setSubsTarget({ exerciseId: item.id, name: item.name });
+                    const order = [null, 'A', 'B', 'C'];
+                    const next = order[(order.indexOf(selectedItem.combo_group) + 1) % order.length];
+                    setSelected((prev) =>
+                      prev.map((e) => (e.exercise_id === item.id ? { ...e, combo_group: next } : e))
+                    );
                   }}
                 >
-                  <Feather name="repeat" size={12} color={subs.length > 0 ? colors.accent : colors.textDim} />
-                  <Text style={styles.subsButtonText}>
+                  <Feather name="link" size={12} color={selectedItem.combo_group ? colors.amber : colors.textDim2} />
+                  <Text style={[styles.comboToggleText, selectedItem.combo_group && styles.comboToggleTextActive]}>
                     {' '}
-                    {subs.length > 0
-                      ? 'Substituto' + (subs.length > 1 ? 's' : '') + ': ' + subs.map((s) => s.name).join(', ')
-                      : 'Cadastrar substituto (opcional)'}
+                    {selectedItem.combo_group ? `Combinado ${selectedItem.combo_group} (toca pra mudar)` : 'Marcar como combinado (opcional)'}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -673,6 +899,33 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   sectionLabel: { color: colors.textDim, marginBottom: 8, fontSize: 13 },
+  blockCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    padding: 16,
+    marginBottom: 20,
+  },
+  blockCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
+  blockCardIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  blockCardTitle: { color: colors.text, fontSize: 14.5, fontWeight: '800' },
+  cardioBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.amberGlow,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  cardioBadgeText: { color: colors.amber, fontSize: 10, fontWeight: '700' },
   exerciseRow: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -797,6 +1050,46 @@ const styles = StyleSheet.create({
   modalHint: { color: colors.textDim, fontSize: 12, marginBottom: 10, lineHeight: 17 },
   subsButton: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border, paddingLeft: 2 },
   subsButtonText: { color: colors.textDim, fontSize: 11.5, flexShrink: 1, flex: 1 },
+  comboToggle: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 8, paddingLeft: 2 },
+  comboToggleText: { color: colors.textDim2, fontSize: 11.5, flexShrink: 1, flex: 1 },
+  comboToggleTextActive: { color: colors.amber, fontWeight: '600' },
+  typeToggleRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  typeToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface2,
+  },
+  typeToggleActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  typeToggleText: { color: colors.textDim, fontSize: 12.5, fontWeight: '600' },
+  typeToggleTextActive: { color: '#04170F' },
+  cardioInputs: { flexDirection: 'row', gap: 6 },
+  cardioInput: {
+    width: 54,
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm - 4,
+    padding: 8,
+    color: colors.text,
+    textAlign: 'center',
+    fontSize: 13,
+  },
+  intensityRow: { flexDirection: 'row', gap: 6, marginTop: 10, paddingLeft: 30 },
+  intensityChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  intensityChipActive: { backgroundColor: colors.accentGlow, borderColor: colors.accent },
+  intensityChipText: { color: colors.textDim, fontSize: 11, textTransform: 'capitalize' },
+  intensityChipTextActive: { color: colors.accent, fontWeight: '700' },
   catalogRow: {
     paddingVertical: 12,
     borderBottomWidth: 1,

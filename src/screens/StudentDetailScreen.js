@@ -1,8 +1,9 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
+import { generateAndShareMonthlyReport } from '../lib/monthlyReport';
 import { colors, radius } from '../theme/theme';
 
 const STATUS_LABEL = {
@@ -15,7 +16,9 @@ const MENU = [
   { key: 'StudentChat', icon: 'message-circle', title: 'Conversar', desc: 'Chat direto com o aluno' },
   { key: 'StudentWorkouts', icon: 'zap', title: 'Treinos', desc: 'Montar e gerenciar os treinos do aluno' },
   { key: 'StudentHistory', icon: 'trending-up', title: 'Histórico de treinos', desc: 'Sessões realizadas e evolução' },
-  { key: 'StudentEvaluations', icon: 'bar-chart-2', title: 'Avaliações físicas', desc: 'Medidas, peso e metas do aluno' },
+  { key: 'StudentEvaluations', icon: 'bar-chart-2', title: 'Avaliações físicas', desc: 'Medidas, peso, fotos e metas do aluno' },
+  { key: 'StudentParqView', icon: 'file-text', title: 'PAR-Q', desc: 'Questionário de saúde respondido pelo aluno' },
+  { key: 'MonthlyReport', icon: 'download', title: 'Relatório mensal (PDF)', desc: 'Gerar e compartilhar resumo do mês' },
   { key: 'StudentHealth', icon: 'heart', title: 'Dados de saúde', desc: 'Condições e restrições informadas' },
   { key: 'StudentRegistration', icon: 'clipboard', title: 'Dados cadastrais', desc: 'Nome, e-mail e informações da conta' },
   { key: 'StudentSubscription', icon: 'credit-card', title: 'Assinatura', desc: 'Pagamentos e status de acesso' },
@@ -35,6 +38,23 @@ function getAccessInfo(student) {
   return { text: 'Ativo', color: colors.accent, glow: colors.accentGlow };
 }
 
+function getDayStatus(dayIndex, isDone) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const startOfWeek = new Date(today);
+  startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+  const dayDate = new Date(startOfWeek);
+  dayDate.setDate(startOfWeek.getDate() + dayIndex);
+
+  // Domingo é tratado como "dia extra" (não é dia de treino obrigatório) —
+  // só vira check de verdade se o aluno treinou por conta própria.
+  if (dayIndex === 0) return isDone ? 'done' : 'extra';
+
+  if (isDone) return 'done';
+  if (dayDate.getTime() > today.getTime()) return 'upcoming'; // ainda vai acontecer
+  return 'missed'; // já passou e não teve treino concluído
+}
+
 export default function StudentDetailScreen({ route, navigation }) {
   const { studentId, studentName } = route.params;
   const [student, setStudent] = useState(null);
@@ -42,6 +62,18 @@ export default function StudentDetailScreen({ route, navigation }) {
   const [consistency, setConsistency] = useState({ percentual: 0, treinosSemana: 0, metaTreinos: 0, exerciciosSemana: 0 });
 
   const [weekDays, setWeekDays] = useState([false, false, false, false, false, false, false]); // dom..sáb
+  const [generatingReport, setGeneratingReport] = useState(false);
+
+  const handleGenerateReport = async () => {
+    setGeneratingReport(true);
+    try {
+      await generateAndShareMonthlyReport(studentId, studentName || student?.name);
+    } catch (e) {
+      Alert.alert('Erro ao gerar relatório', e.message);
+    } finally {
+      setGeneratingReport(false);
+    }
+  };
 
   const load = useCallback(async () => {
     const { data } = await supabase.from('profiles').select('*').eq('id', studentId).single();
@@ -67,7 +99,6 @@ export default function StudentDetailScreen({ route, navigation }) {
       days[d] = true;
     });
     setWeekDays(days);
-
     // Consistência do ALUNO (não confundir com a média geral do dashboard):
     // meta = quantos treinos esse aluno tem cadastrados na semana; feitos =
     // quantos ele concluiu nos últimos 7 dias; exercícios = total de séries
@@ -166,14 +197,29 @@ export default function StudentDetailScreen({ route, navigation }) {
       <View style={styles.weekCard}>
         <Text style={styles.weekTitle}>Semana atual</Text>
         <View style={styles.weekRow}>
-          {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((label, i) => (
-            <View key={i} style={styles.weekDayCol}>
-              <View style={[styles.weekDot, weekDays[i] && styles.weekDotFilled]}>
-                {weekDays[i] && <Feather name="check" size={12} color="#04170F" />}
+          {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((label, i) => {
+            const status = getDayStatus(i, weekDays[i]);
+            const iconByStatus = {
+              done: { name: 'check', color: '#04170F', bg: colors.accent, border: colors.accent },
+              missed: { name: 'x', color: colors.textDim2, bg: 'transparent', border: colors.border },
+              upcoming: { name: 'help-circle', color: colors.textDim2, bg: 'transparent', border: colors.border },
+              extra: { name: 'alert-circle', color: colors.amber, bg: 'transparent', border: colors.amber },
+            }[status];
+            return (
+              <View key={i} style={styles.weekDayCol}>
+                <View style={[styles.weekDot, { backgroundColor: iconByStatus.bg, borderColor: iconByStatus.border }]}>
+                  <Feather name={iconByStatus.name} size={13} color={iconByStatus.color} />
+                </View>
+                <Text style={styles.weekDayLabel}>{label}</Text>
               </View>
-              <Text style={styles.weekDayLabel}>{label}</Text>
-            </View>
-          ))}
+            );
+          })}
+        </View>
+        <View style={styles.weekLegend}>
+          <Text style={styles.weekLegendItem}>✓ concluído</Text>
+          <Text style={styles.weekLegendItem}>✕ não treinou</Text>
+          <Text style={styles.weekLegendItem}>? ainda vai chegar</Text>
+          <Text style={styles.weekLegendItem}>! domingo é dia extra</Text>
         </View>
       </View>
 
@@ -219,17 +265,25 @@ export default function StudentDetailScreen({ route, navigation }) {
             key={item.key}
             style={styles.menuCard}
             activeOpacity={0.8}
-            onPress={() =>
+            onPress={() => {
+              if (item.key === 'MonthlyReport') {
+                handleGenerateReport();
+                return;
+              }
               navigation.navigate(
                 item.key,
                 item.key === 'StudentChat'
                   ? { otherUserId: studentId, otherUserName: studentName || student?.name }
                   : { studentId, studentName: studentName || student?.name }
-              )
-            }
+              );
+            }}
           >
             <View style={styles.menuIcon}>
-              <Feather name={item.icon} size={18} color={colors.accent} />
+              {generatingReport && item.key === 'MonthlyReport' ? (
+                <ActivityIndicator size="small" color={colors.accent} />
+              ) : (
+                <Feather name={item.icon} size={18} color={colors.accent} />
+              )}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.menuTitle}>{item.title}</Text>
@@ -292,8 +346,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  weekDotFilled: { backgroundColor: colors.accent, borderColor: colors.accent },
   weekDayLabel: { color: colors.textDim2, fontSize: 10.5, fontWeight: '600' },
+  weekLegend: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 },
+  weekLegendItem: { color: colors.textDim2, fontSize: 10.5 },
   menuCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,

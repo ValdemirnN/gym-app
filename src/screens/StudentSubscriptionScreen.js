@@ -17,12 +17,20 @@ function formatDate(dateStr) {
   return new Date(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+function monthLabel(dateStr) {
+  if (!dateStr) return '-';
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+}
+
 export default function StudentSubscriptionScreen({ route, navigation }) {
   const { studentId, studentName } = route.params;
   const { session } = useAuth();
   const [payments, setPayments] = useState([]);
   const [amount, setAmount] = useState('');
   const [saving, setSaving] = useState(false);
+  const [student, setStudent] = useState(null);
+  const [editingFee, setEditingFee] = useState(false);
+  const [feeInput, setFeeInput] = useState('');
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -31,6 +39,14 @@ export default function StudentSubscriptionScreen({ route, navigation }) {
       .eq('cliente_id', studentId)
       .order('reference_month', { ascending: false });
     setPayments(data || []);
+
+    const { data: st } = await supabase
+      .from('profiles')
+      .select('access_expires_at, access_blocked, monthly_fee, created_at')
+      .eq('id', studentId)
+      .single();
+    setStudent(st);
+    setFeeInput(st?.monthly_fee ? String(st.monthly_fee) : '');
   }, [studentId]);
 
   useFocusEffect(
@@ -65,7 +81,7 @@ export default function StudentSubscriptionScreen({ route, navigation }) {
       cliente_id: studentId,
       personal_id: session.user.id,
       reference_month: referenceMonth,
-      amount: parseFloat(amount) || null,
+      amount: parseFloat(amount.replace(',', '.')) || student?.monthly_fee || null,
       status: 'confirmado',
       confirmed_at: now.toISOString(),
       confirmed_by: session.user.id,
@@ -80,6 +96,33 @@ export default function StudentSubscriptionScreen({ route, navigation }) {
     load();
   };
 
+  const saveFee = async () => {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ monthly_fee: feeInput ? parseFloat(feeInput.replace(',', '.')) : null })
+      .eq('id', studentId);
+    if (error) {
+      Alert.alert('Erro', error.message);
+      return;
+    }
+    setEditingFee(false);
+    load();
+  };
+
+  const confirmedPayments = payments.filter((p) => p.status === 'confirmado');
+  const totalRecebido = confirmedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const lastPayment = confirmedPayments[0];
+
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const currentMonthPaid = confirmedPayments.some((p) => (p.reference_month || '').startsWith(currentMonthKey));
+
+  const accessStatus = student?.access_blocked
+    ? { text: 'Bloqueado', color: colors.red }
+    : student?.access_expires_at && new Date(student.access_expires_at) < now
+    ? { text: 'Expirado', color: colors.red }
+    : { text: 'Ativo', color: colors.accent };
+
   return (
     <View style={styles.container}>
       <TouchableOpacity style={styles.backRow} onPress={() => navigation.goBack()}>
@@ -89,14 +132,69 @@ export default function StudentSubscriptionScreen({ route, navigation }) {
 
       <Text style={styles.title}>Assinatura</Text>
 
+      <View style={styles.summaryGrid}>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Status do mês atual</Text>
+          <Text style={[styles.summaryValue, { color: currentMonthPaid ? colors.accent : colors.red }]}>
+            {currentMonthPaid ? 'Em dia' : 'Pendente'}
+          </Text>
+        </View>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Acesso</Text>
+          <Text style={[styles.summaryValue, { color: accessStatus.color }]}>{accessStatus.text}</Text>
+        </View>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Total recebido</Text>
+          <Text style={styles.summaryValue}>R$ {totalRecebido.toFixed(2)}</Text>
+        </View>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Último pagamento</Text>
+          <Text style={styles.summaryValue}>{lastPayment ? formatDate(lastPayment.reference_month) : '-'}</Text>
+        </View>
+      </View>
+
+      <View style={styles.feeBox}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.registerLabel}>Mensalidade combinada</Text>
+          {editingFee ? (
+            <View style={{ flexDirection: 'row', marginTop: 6 }}>
+              <TextInput
+                style={styles.amountInput}
+                placeholder="R$ 0,00"
+                placeholderTextColor={colors.textDim2}
+                keyboardType="decimal-pad"
+                value={feeInput}
+                onChangeText={setFeeInput}
+                autoFocus
+              />
+              <TouchableOpacity style={styles.registerButton} onPress={saveFee}>
+                <Text style={styles.registerButtonText}>Salvar</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity onPress={() => setEditingFee(true)}>
+              <Text style={styles.feeValue}>
+                {student?.monthly_fee ? `R$ ${Number(student.monthly_fee).toFixed(2)} / mês` : 'Toque pra definir um valor'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        {student?.access_expires_at && (
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={styles.registerLabel}>Válido até</Text>
+            <Text style={styles.feeValue}>{formatDate(student.access_expires_at)}</Text>
+          </View>
+        )}
+      </View>
+
       <View style={styles.registerBox}>
-        <Text style={styles.registerLabel}>Registrar pagamento deste mês (valor opcional)</Text>
+        <Text style={styles.registerLabel}>Registrar pagamento deste mês (deixe em branco pra usar a mensalidade combinada)</Text>
         <View style={{ flexDirection: 'row' }}>
           <TextInput
             style={styles.amountInput}
-            placeholder="R$"
+            placeholder={student?.monthly_fee ? `R$ ${Number(student.monthly_fee).toFixed(2)}` : 'R$'}
             placeholderTextColor={colors.textDim2}
-            keyboardType="numeric"
+            keyboardType="decimal-pad"
             value={amount}
             onChangeText={setAmount}
           />
@@ -106,6 +204,7 @@ export default function StudentSubscriptionScreen({ route, navigation }) {
         </View>
       </View>
 
+      <Text style={styles.historyTitle}>Histórico de pagamentos</Text>
       <FlatList
         data={payments}
         keyExtractor={(item) => item.id}
@@ -119,7 +218,7 @@ export default function StudentSubscriptionScreen({ route, navigation }) {
                 <Feather name="credit-card" size={16} color={colors.accent} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>Referente a {formatDate(item.reference_month)}</Text>
+                <Text style={styles.cardTitle}>{monthLabel(item.reference_month)}</Text>
                 {item.amount ? <Text style={styles.cardSubtitle}>R$ {Number(item.amount).toFixed(2)}</Text> : null}
               </View>
               {item.status === 'pendente' ? (
@@ -144,13 +243,34 @@ const styles = StyleSheet.create({
   backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginLeft: -4 },
   back: { color: colors.text, fontSize: 15, marginLeft: 2 },
   title: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 16 },
+  summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
+  summaryCard: {
+    width: '47%',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: 12,
+  },
+  summaryLabel: { color: colors.textDim, fontSize: 11, marginBottom: 4 },
+  summaryValue: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  feeBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: colors.accentGlow,
+    borderRadius: radius.md,
+    padding: 14,
+    marginBottom: 14,
+  },
+  feeValue: { color: colors.text, fontSize: 15, fontWeight: '700', marginTop: 4 },
+  historyTitle: { color: colors.textDim, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', marginBottom: 8 },
   registerBox: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
     padding: 14,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   registerLabel: { color: colors.textDim, fontSize: 12, marginBottom: 10 },
   amountInput: {
@@ -185,7 +305,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardTitle: { color: colors.text, fontSize: 14, fontWeight: '700' },
+  cardTitle: { color: colors.text, fontSize: 14, fontWeight: '700', textTransform: 'capitalize' },
   cardSubtitle: { color: colors.textDim, fontSize: 12, marginTop: 2 },
   badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.pill },
   badgeText: { fontSize: 11, fontWeight: '700' },

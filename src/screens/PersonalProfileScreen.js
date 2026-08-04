@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -69,6 +70,7 @@ function FieldCard({ label, value }) {
 }
 
 export default function PersonalProfileScreen() {
+  const navigation = useNavigation();
   const { session, profile, signOut, refreshProfile } = useAuth();
 
   const [editing, setEditing] = useState(false);
@@ -303,6 +305,13 @@ export default function PersonalProfileScreen() {
         ) : null}
         <FieldCard label="Horários de disponibilidade" value={displayValue(availabilityHours)} />
         <FieldCard label="Chave Pix" value={displayValue(pixKey)} />
+
+        <TouchableOpacity
+          style={styles.helpButton}
+          onPress={() => navigation.navigate('PersonalDashboard', { screen: 'Faq', params: { role: 'personal' } })}
+        >
+          <Text style={styles.helpButtonText}>Dúvidas e suporte</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.logoutButton} onPress={signOut}>
           <Text style={styles.logoutText}>Sair da conta</Text>
@@ -618,4 +627,14 @@ const styles = StyleSheet.create({
   saveButtonText: { color: '#04170F', fontWeight: 'bold', fontSize: 16 },
   logoutButton: { padding: 16, alignItems: 'center', marginTop: 20 },
   logoutText: { color: colors.red, fontSize: 15, fontWeight: '700' },
+  helpButton: {
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 24,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+  },
+  helpButtonText: { color: colors.text, fontSize: 14, fontWeight: '600' },
 });

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,15 +13,41 @@ import {
   Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { supabase } from '../lib/supabase';
+import { insertRow, updateRow } from '../lib/dataClient';
 import { colors, radius } from '../theme/theme';
 
 export default function ActiveWorkoutScreen({ route, navigation }) {
   const { logId, workoutName, exercises } = route.params;
 
+  const [startedAt] = useState(() => Date.now());
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [startedAt]);
+
+  const formatElapsed = (totalSeconds) => {
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
   // Estrutura: { [exerciseId]: [{reps, weight, done}, ...] }
   const initialState = {};
+  const initialCardioState = {};
   exercises.forEach((item) => {
+    if (item.exercises.exercise_type === 'cardio') {
+      initialCardioState[item.exercises.id] = {
+        duration: item.target_duration_minutes ? String(item.target_duration_minutes) : '',
+        distance: item.target_distance_km ? String(item.target_distance_km) : '',
+        intensity: item.target_intensity || 'moderada',
+        done: false,
+      };
+      return;
+    }
     initialState[item.exercises.id] = Array.from({ length: item.target_sets }, () => ({
       reps: String(item.target_reps),
       weight: '',
@@ -29,6 +55,7 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
     }));
   });
   const [sets, setSets] = useState(initialState);
+  const [cardio, setCardio] = useState(initialCardioState);
   const [finishing, setFinishing] = useState(false);
 
   // status por exercício: { [exerciseId]: { status: 'pulado'|'substituido', reason, substituteId, substituteName } }
@@ -150,6 +177,11 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
     navigation.navigate('VideoPlayer', { videoId, title: item.exercises.name });
   };
 
+  const [showFinishModal, setShowFinishModal] = useState(false);
+  const [finishedAt, setFinishedAt] = useState(null);
+  const [moodChoice, setMoodChoice] = useState(null);
+  const [feedbackComment, setFeedbackComment] = useState('');
+
   const finishWorkout = async () => {
     setFinishing(true);
 
@@ -173,13 +205,41 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
       });
     });
 
+    // Cardio: só entra no registro o que o aluno marcou como concluído
+    const cardioRows = [];
+    Object.entries(cardio).forEach(([exerciseId, c]) => {
+      const status = exerciseStatus[exerciseId];
+      if (status?.status === 'pulado' || !c.done) return;
+      const effectiveExerciseId = status?.status === 'substituido' ? status.substituteId : exerciseId;
+      cardioRows.push({
+        workout_log_id: logId,
+        exercise_id: effectiveExerciseId,
+        duration_minutes: c.duration ? parseFloat(c.duration.replace(',', '.')) : null,
+        distance_km: c.distance ? parseFloat(c.distance.replace(',', '.')) : null,
+        intensity: c.intensity || null,
+      });
+    });
+
+    let wentOffline = false;
+
     if (rows.length > 0) {
-      const { error } = await supabase.from('workout_log_sets').insert(rows);
+      const { offline, error } = await insertRow('workout_log_sets', rows);
       if (error) {
         setFinishing(false);
         Alert.alert('Erro', error.message);
         return;
       }
+      wentOffline = wentOffline || offline;
+    }
+
+    if (cardioRows.length > 0) {
+      const { offline, error } = await insertRow('workout_log_cardio', cardioRows);
+      if (error) {
+        setFinishing(false);
+        Alert.alert('Erro', error.message);
+        return;
+      }
+      wentOffline = wentOffline || offline;
     }
 
     // Registra os exercícios pulados/substituídos (só os que tiveram alteração)
@@ -192,31 +252,66 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
     }));
 
     if (statusRows.length > 0) {
-      const { error: statusError } = await supabase.from('workout_log_exercise_status').insert(statusRows);
+      const { offline, error: statusError } = await insertRow('workout_log_exercise_status', statusRows);
       if (statusError) {
         setFinishing(false);
         Alert.alert('Erro', statusError.message);
         return;
       }
+      wentOffline = wentOffline || offline;
     }
 
-    await supabase.from('workout_logs').update({ finished_at: new Date().toISOString() }).eq('id', logId);
+    const { offline: finishOffline } = await updateRow(
+      'workout_logs',
+      {
+        finished_at: new Date().toISOString(),
+        duration_seconds: elapsedSeconds,
+        feedback_mood: moodChoice,
+        feedback_comment: feedbackComment.trim() || null,
+      },
+      { id: logId }
+    );
+    wentOffline = wentOffline || finishOffline;
 
     setFinishing(false);
-    Alert.alert('Treino concluído!', 'Bom trabalho 💪');
+    setShowFinishModal(false);
+    if (wentOffline) {
+      Alert.alert(
+        'Sem internet',
+        'Bom trabalho 💪 Você tava sem internet — assim que conectar, o treino sobe automaticamente pro seu personal.'
+      );
+    }
     navigation.popToTop();
   };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ padding: 20, paddingTop: 60, paddingBottom: 40 }}>
-      <Text style={styles.title}>{workoutName}</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.title}>{workoutName}</Text>
+        <View style={styles.timerBadge}>
+          <Feather name="clock" size={13} color={colors.accent} />
+          <Text style={styles.timerText}> {formatElapsed(elapsedSeconds)}</Text>
+        </View>
+      </View>
 
       {exercises.map((item) => {
         const exerciseId = item.exercises.id;
         const status = exerciseStatus[exerciseId];
+        const comboPartners = item.combo_group
+          ? exercises.filter((e) => e.combo_group === item.combo_group && e.exercises.id !== exerciseId).map((e) => e.exercises.name)
+          : [];
 
         return (
           <View key={exerciseId} style={styles.exerciseBlock}>
+            {item.combo_group && (
+              <View style={styles.comboBadge}>
+                <Feather name="repeat" size={11} color={colors.amber} />
+                <Text style={styles.comboBadgeText}>
+                  {' '}Combinado {item.combo_group}
+                  {comboPartners.length > 0 ? ` · alterne com ${comboPartners.join(', ')}` : ''}
+                </Text>
+              </View>
+            )}
             <View style={styles.exerciseHeader}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.exerciseName}>
@@ -225,9 +320,14 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
                 {status?.status === 'substituido' && (
                   <Text style={styles.substitutedLabel}>no lugar de {item.exercises.name}</Text>
                 )}
+                {item.exercises.instructions ? (
+                  <Text style={styles.instructionsText}>{item.exercises.instructions}</Text>
+                ) : null}
                 {item.exercises.video_id ? (
                   <TouchableOpacity style={styles.videoButton} onPress={() => openVideo(item)}>
-                    <Feather name="play-circle" size={13} color={colors.accent} />
+                    <View style={styles.videoThumb}>
+                      <Feather name="play" size={13} color="#fff" />
+                    </View>
                     <Text style={styles.videoButtonText}>Ver vídeo</Text>
                   </TouchableOpacity>
                 ) : null}
@@ -241,6 +341,72 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
               <View style={styles.skippedBox}>
                 <Feather name="x-circle" size={14} color={colors.red} />
                 <Text style={styles.skippedText}>Exercício pulado — {status.reason}</Text>
+              </View>
+            ) : item.exercises.exercise_type === 'cardio' ? (
+              <View style={styles.cardioBlock}>
+                {(item.target_duration_minutes || item.target_distance_km || item.target_intensity) && (
+                  <Text style={styles.cardioTarget}>
+                    Meta:{' '}
+                    {[
+                      item.target_duration_minutes ? `${item.target_duration_minutes} min` : null,
+                      item.target_distance_km ? `${item.target_distance_km} km` : null,
+                      item.target_intensity ? `intensidade ${item.target_intensity}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </Text>
+                )}
+                <View style={styles.cardioRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardioLabel}>Minutos</Text>
+                    <TextInput
+                      style={styles.setInput}
+                      placeholder="min"
+                      placeholderTextColor={colors.textDim2}
+                      keyboardType="number-pad"
+                      value={cardio[exerciseId]?.duration || ''}
+                      onChangeText={(v) => setCardio((prev) => ({ ...prev, [exerciseId]: { ...prev[exerciseId], duration: v } }))}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardioLabel}>Distância (km)</Text>
+                    <TextInput
+                      style={styles.setInput}
+                      placeholder="km"
+                      placeholderTextColor={colors.textDim2}
+                      keyboardType="decimal-pad"
+                      value={cardio[exerciseId]?.distance || ''}
+                      onChangeText={(v) => setCardio((prev) => ({ ...prev, [exerciseId]: { ...prev[exerciseId], distance: v } }))}
+                    />
+                  </View>
+                </View>
+                <View style={styles.intensityRow}>
+                  {['leve', 'moderada', 'intensa'].map((level) => (
+                    <TouchableOpacity
+                      key={level}
+                      style={[styles.intensityChip, cardio[exerciseId]?.intensity === level && styles.intensityChipActive]}
+                      onPress={() => setCardio((prev) => ({ ...prev, [exerciseId]: { ...prev[exerciseId], intensity: level } }))}
+                    >
+                      <Text
+                        style={[
+                          styles.intensityChipText,
+                          cardio[exerciseId]?.intensity === level && styles.intensityChipTextActive,
+                        ]}
+                      >
+                        {level}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TouchableOpacity
+                  style={[styles.cardioDoneButton, cardio[exerciseId]?.done && styles.cardioDoneButtonActive]}
+                  onPress={() => setCardio((prev) => ({ ...prev, [exerciseId]: { ...prev[exerciseId], done: !prev[exerciseId]?.done } }))}
+                >
+                  <Feather name={cardio[exerciseId]?.done ? 'check-circle' : 'circle'} size={16} color={cardio[exerciseId]?.done ? '#04170F' : colors.textDim} />
+                  <Text style={[styles.cardioDoneText, cardio[exerciseId]?.done && styles.cardioDoneTextActive]}>
+                    {' '}{cardio[exerciseId]?.done ? 'Concluído' : 'Marcar como concluído'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             ) : (
               sets[exerciseId].map((s, index) => (
@@ -277,8 +443,16 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
         );
       })}
 
-      <TouchableOpacity style={styles.finishButton} onPress={finishWorkout} disabled={finishing} activeOpacity={0.85}>
-        <Text style={styles.finishButtonText}>{finishing ? 'Salvando...' : 'Finalizar Treino'}</Text>
+      <TouchableOpacity
+        style={styles.finishButton}
+        onPress={() => {
+          setFinishedAt(Date.now());
+          setShowFinishModal(true);
+        }}
+        disabled={finishing}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.finishButtonText}>Finalizar Treino</Text>
       </TouchableOpacity>
 
       {/* Modal: motivo de pular o exercício */}
@@ -354,13 +528,121 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <Modal visible={showFinishModal} transparent animationType="slide" onRequestClose={() => setShowFinishModal(false)}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.modalBox}>
+            <View style={styles.finishIconCircle}>
+              <Feather name="award" size={26} color="#04170F" />
+            </View>
+            <Text style={styles.finishTitle}>Parabéns!</Text>
+            <Text style={styles.finishSubtitle}>Você concluiu seu treino!</Text>
+
+            <View style={styles.finishStatsBox}>
+              <View style={styles.finishStatsRow}>
+                <Text style={styles.finishStatsLabel}>Início</Text>
+                <Text style={styles.finishStatsValue}>
+                  {new Date(startedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+              </View>
+              <View style={styles.finishStatsRow}>
+                <Text style={styles.finishStatsLabel}>Fim</Text>
+                <Text style={styles.finishStatsValue}>
+                  {finishedAt
+                    ? new Date(finishedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                    : '-'}
+                </Text>
+              </View>
+              <View style={styles.finishStatsRow}>
+                <Text style={styles.finishStatsLabel}>Tempo de treino</Text>
+                <Text style={styles.finishStatsValue}>{formatElapsed(elapsedSeconds)}</Text>
+              </View>
+            </View>
+
+            <Text style={styles.fieldLabel}>O que você achou dessa atividade?</Text>
+            <View style={styles.moodRow}>
+              {[
+                { key: 'leve', label: 'Tranquilo' },
+                { key: 'moderado', label: 'Moderado' },
+                { key: 'dificil', label: 'Difícil' },
+                { key: 'exaustao', label: 'Exaustão máxima' },
+              ].map((m) => (
+                <TouchableOpacity
+                  key={m.key}
+                  style={[styles.moodChip, moodChoice === m.key && styles.moodChipActive]}
+                  onPress={() => setMoodChoice(m.key)}
+                >
+                  <Text style={[styles.moodChipText, moodChoice === m.key && styles.moodChipTextActive]}>{m.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.fieldLabel}>Deixe seu comentário aqui</Text>
+            <TextInput
+              style={styles.modalTextArea}
+              placeholder="Como foi o treino hoje?"
+              placeholderTextColor={colors.textDim2}
+              value={feedbackComment}
+              onChangeText={setFeedbackComment}
+              multiline
+            />
+
+            <TouchableOpacity style={styles.modalConfirm} onPress={finishWorkout} disabled={finishing}>
+              <Text style={styles.modalConfirmText}>{finishing ? 'Salvando...' : 'Concluir'}</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 20 },
+  title: { fontSize: 22, fontWeight: '800', color: colors.text, flexShrink: 1 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  timerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.accentGlow,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+  },
+  timerText: { color: colors.accent, fontSize: 13, fontWeight: '700' },
+  finishIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  finishTitle: { color: colors.text, fontSize: 20, fontWeight: '800', textAlign: 'center' },
+  finishSubtitle: { color: colors.textDim, fontSize: 13, textAlign: 'center', marginBottom: 16 },
+  finishStatsBox: {
+    backgroundColor: colors.surface2,
+    borderRadius: radius.md,
+    padding: 14,
+    marginBottom: 16,
+  },
+  finishStatsRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
+  finishStatsLabel: { color: colors.textDim, fontSize: 12.5, fontWeight: '600' },
+  finishStatsValue: { color: colors.text, fontSize: 12.5, fontWeight: '700' },
+  fieldLabel: { color: colors.textDim, fontSize: 12.5, fontWeight: '600', marginBottom: 8, marginTop: 4 },
+  moodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  moodChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  moodChipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  moodChipText: { color: colors.textDim, fontSize: 12 },
+  moodChipTextActive: { color: '#04170F', fontWeight: '700' },
   exerciseBlock: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -383,6 +665,33 @@ const styles = StyleSheet.create({
   },
   skippedText: { color: colors.red, fontSize: 13, flex: 1 },
   setRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 },
+  cardioBlock: { marginTop: 4 },
+  cardioTarget: { color: colors.textDim, fontSize: 12, marginBottom: 10 },
+  cardioRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+  cardioLabel: { color: colors.textDim2, fontSize: 11, marginBottom: 4 },
+  intensityRow: { flexDirection: 'row', gap: 6, marginBottom: 12 },
+  intensityChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  intensityChipActive: { backgroundColor: colors.accentGlow, borderColor: colors.accent },
+  intensityChipText: { color: colors.textDim, fontSize: 11.5, textTransform: 'capitalize' },
+  intensityChipTextActive: { color: colors.accent, fontWeight: '700' },
+  cardioDoneButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    paddingVertical: 11,
+  },
+  cardioDoneButtonActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  cardioDoneText: { color: colors.textDim, fontSize: 13, fontWeight: '600' },
+  cardioDoneTextActive: { color: '#04170F' },
   setLabel: { color: colors.textDim, width: 56, fontSize: 12.5 },
   setInput: {
     backgroundColor: colors.surface2,
@@ -419,7 +728,19 @@ const styles = StyleSheet.create({
   },
   modalTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: 12 },
   modalHint: { color: colors.textDim, fontSize: 12.5, marginBottom: 8 },
-  videoButton: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  videoButton: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  videoThumb: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+  },
+  comboBadge: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  comboBadgeText: { color: colors.amber, fontSize: 11, fontWeight: '700' },
+  instructionsText: { color: colors.textDim, fontSize: 12, lineHeight: 17, marginTop: 6 },
   videoButtonText: { color: colors.accent, fontSize: 12, fontWeight: '600', marginLeft: 4 },
   modalInput: {
     backgroundColor: colors.surface,

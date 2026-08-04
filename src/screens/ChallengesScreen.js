@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, Alert, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
@@ -24,6 +24,8 @@ export default function ChallengesScreen({ navigation }) {
   const [loadingRanking, setLoadingRanking] = useState(null);
 
   const [showCreate, setShowCreate] = useState(false);
+  const [viewingPhotos, setViewingPhotos] = useState(null); // { challenge, student }
+  const [deletingPhoto, setDeletingPhoto] = useState(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [prize, setPrize] = useState('');
@@ -46,34 +48,34 @@ export default function ChallengesScreen({ navigation }) {
     }, [load])
   );
 
-  const loadRanking = async (challenge) => {
-    if (ranking[challenge.id]) return; // já carregado
+  const loadRanking = async (challenge, force) => {
+    if (ranking[challenge.id] && !force) return; // já carregado
     setLoadingRanking(challenge.id);
 
-    const { data: students } = await supabase
-      .from('profiles')
-      .select('id, name, avatar_url')
-      .eq('personal_id', session.user.id)
-      .eq('is_excluded', false);
+    const { data: subs } = await supabase
+      .from('challenge_submissions')
+      .select('id, student_id, storage_path, created_at, profiles:student_id(id, name, avatar_url)')
+      .eq('challenge_id', challenge.id)
+      .order('created_at', { ascending: false });
 
-    const studentIds = (students || []).map((s) => s.id);
-    let counts = {};
-    if (studentIds.length > 0) {
-      const { data: logs } = await supabase
-        .from('workout_logs')
-        .select('user_id')
-        .in('user_id', studentIds)
-        .gte('started_at', challenge.start_date)
-        .lte('started_at', challenge.end_date + 'T23:59:59')
-        .not('finished_at', 'is', null)
-        .is('skipped', false);
-      (logs || []).forEach((l) => {
-        counts[l.user_id] = (counts[l.user_id] || 0) + 1;
-      });
-    }
+    const counts = {};
+    const info = {};
+    const photosByStudent = {};
+    (subs || []).forEach((s) => {
+      counts[s.student_id] = (counts[s.student_id] || 0) + 1;
+      if (s.profiles) info[s.student_id] = s.profiles;
+      photosByStudent[s.student_id] = photosByStudent[s.student_id] || [];
+      photosByStudent[s.student_id].push(s);
+    });
 
-    const list = (students || [])
-      .map((s) => ({ ...s, count: counts[s.id] || 0 }))
+    const list = Object.keys(counts)
+      .map((id) => ({
+        id,
+        name: info[id]?.name || 'Aluno',
+        avatar_url: info[id]?.avatar_url,
+        count: counts[id],
+        photos: photosByStudent[id],
+      }))
       .sort((a, b) => b.count - a.count);
 
     setRanking((prev) => ({ ...prev, [challenge.id]: list }));
@@ -84,6 +86,29 @@ export default function ChallengesScreen({ navigation }) {
     const next = expandedId === challenge.id ? null : challenge.id;
     setExpandedId(next);
     if (next) loadRanking(challenge);
+  };
+
+  const deletePhoto = async (challengeId, photo) => {
+    Alert.alert('Apagar foto', 'Isso remove o ponto dessa foto do ranking. Confirma?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Apagar',
+        style: 'destructive',
+        onPress: async () => {
+          setDeletingPhoto(photo.id);
+          await supabase.storage.from('challenge-photos').remove([photo.storage_path]);
+          const { error } = await supabase.from('challenge_submissions').delete().eq('id', photo.id);
+          setDeletingPhoto(null);
+          if (error) {
+            Alert.alert('Erro', error.message);
+            return;
+          }
+          setViewingPhotos(null);
+          const c = challenges.find((ch) => ch.id === challengeId);
+          if (c) loadRanking(c, true);
+        },
+      },
+    ]);
   };
 
   const resetForm = () => {
@@ -150,6 +175,11 @@ export default function ChallengesScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
+      <Text style={styles.howNote}>
+        Cada aluno tira uma foto pelo app pra provar que cumpriu a regra do desafio — cada foto vale 1 ponto no
+        ranking. Você escreve a regra e o prazo, e escolhe o vencedor no fim.
+      </Text>
+
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
         {challenges.length === 0 && (
           <Text style={styles.empty}>
@@ -190,20 +220,25 @@ export default function ChallengesScreen({ navigation }) {
               {isOpen && (
                 <View style={styles.rankingBox}>
                   {c.description ? <Text style={styles.desc}>{c.description}</Text> : null}
-                  <Text style={styles.rankingTitle}>Ranking (treinos concluídos no período)</Text>
+                  <Text style={styles.rankingTitle}>Ranking (fotos enviadas como prova)</Text>
                   {loadingRanking === c.id && <Text style={styles.empty}>Carregando...</Text>}
                   {list.map((s, i) => (
-                    <TouchableOpacity key={s.id} style={styles.rankRow} onPress={() => setWinner(c, s)}>
+                    <View key={s.id} style={styles.rankRow}>
                       <Text style={styles.rankPosition}>{i + 1}º</Text>
                       <Avatar uri={s.avatar_url} size={30} />
-                      <Text style={styles.rankName}>{s.name}</Text>
-                      <Text style={styles.rankCount}>{s.count} treinos</Text>
-                    </TouchableOpacity>
+                      <TouchableOpacity style={{ flex: 1 }} onPress={() => setWinner(c, s)}>
+                        <Text style={styles.rankName}>{s.name}</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.rankCount}>{s.count} 📸</Text>
+                      <TouchableOpacity onPress={() => setViewingPhotos({ challenge: c, student: s })}>
+                        <Feather name="image" size={16} color={colors.textDim2} />
+                      </TouchableOpacity>
+                    </View>
                   ))}
                   {list.length === 0 && loadingRanking !== c.id && (
-                    <Text style={styles.empty}>Nenhum aluno pra ranquear ainda.</Text>
+                    <Text style={styles.empty}>Ninguém enviou foto nesse desafio ainda.</Text>
                   )}
-                  <Text style={styles.hint}>Toque num aluno da lista pra marcar como vencedor.</Text>
+                  <Text style={styles.hint}>Toque no nome pra marcar vencedor, ou no ícone de foto pra ver/apagar as provas.</Text>
                 </View>
               )}
             </View>
@@ -240,6 +275,36 @@ export default function ChallengesScreen({ navigation }) {
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
+
+      <Modal visible={!!viewingPhotos} transparent animationType="slide" onRequestClose={() => setViewingPhotos(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Fotos de {viewingPhotos?.student?.name}</Text>
+            <ScrollView style={{ maxHeight: 420 }}>
+              <View style={styles.photoGrid}>
+                {(viewingPhotos?.student?.photos || []).map((p) => {
+                  const { data } = supabase.storage.from('challenge-photos').getPublicUrl(p.storage_path);
+                  return (
+                    <View key={p.id} style={styles.photoItem}>
+                      <Image source={{ uri: data.publicUrl }} style={styles.photoImage} />
+                      <TouchableOpacity
+                        style={styles.photoDeleteButton}
+                        onPress={() => deletePhoto(viewingPhotos.challenge.id, p)}
+                        disabled={deletingPhoto === p.id}
+                      >
+                        <Feather name="trash-2" size={13} color="#fff" />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
+            </ScrollView>
+            <TouchableOpacity style={styles.modalClose} onPress={() => setViewingPhotos(null)}>
+              <Text style={styles.modalCloseText}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -253,6 +318,7 @@ const styles = StyleSheet.create({
   newButton: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.accent, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.pill },
   newButtonText: { color: '#04170F', fontWeight: '700', fontSize: 12.5 },
   empty: { color: colors.textDim, fontSize: 13, lineHeight: 19, marginTop: 20 },
+  howNote: { color: colors.textDim, fontSize: 12, lineHeight: 17, marginBottom: 16 },
   card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 14, marginBottom: 10 },
   cardHeader: { flexDirection: 'row', alignItems: 'center' },
   cardTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
@@ -287,4 +353,15 @@ const styles = StyleSheet.create({
   saveButtonText: { color: '#04170F', fontWeight: '700', fontSize: 14 },
   modalClose: { alignItems: 'center', paddingVertical: 12, marginTop: 4 },
   modalCloseText: { color: colors.textDim, fontSize: 13 },
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  photoItem: { width: '31%', aspectRatio: 1, position: 'relative' },
+  photoImage: { width: '100%', height: '100%', borderRadius: radius.sm, backgroundColor: colors.surface },
+  photoDeleteButton: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 12,
+    padding: 5,
+  },
 });

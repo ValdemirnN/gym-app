@@ -14,6 +14,8 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
+import { insertRow } from '../lib/dataClient';
+import { generateUUID } from '../utils/uuid';
 import { useAuth } from '../context/AuthContext';
 import { colors, radius } from '../theme/theme';
 
@@ -46,15 +48,24 @@ export default function WorkoutDetailScreen({ route, navigation }) {
   const [showSkipModal, setShowSkipModal] = useState(false);
   const [skipping, setSkipping] = useState(false);
 
+  const [workoutMeta, setWorkoutMeta] = useState(null);
+
   const loadItems = useCallback(async () => {
     const { data } = await supabase
       .from('workout_exercises')
       .select(
-        'id, target_sets, target_reps, order_index, exercises(id, name, muscle_group, video_id), workout_exercise_substitutes(substitute_exercise_id, exercises:substitute_exercise_id(id, name, muscle_group))'
+        'id, target_sets, target_reps, target_duration_minutes, target_distance_km, target_intensity, order_index, combo_group, exercises(id, name, muscle_group, video_id, exercise_type, instructions), workout_exercise_substitutes(substitute_exercise_id, exercises:substitute_exercise_id(id, name, muscle_group))'
       )
       .eq('workout_id', workoutId)
       .order('order_index');
     setItems(data || []);
+
+    const { data: meta } = await supabase
+      .from('workouts')
+      .select('level, goal, period_start, period_end')
+      .eq('id', workoutId)
+      .maybeSingle();
+    setWorkoutMeta(meta);
   }, [workoutId]);
 
   useFocusEffect(
@@ -76,11 +87,14 @@ export default function WorkoutDetailScreen({ route, navigation }) {
 
   const createLogAndGo = async (extraFields) => {
     setStarting(true);
-    const { data: log, error } = await supabase
-      .from('workout_logs')
-      .insert({ user_id: session.user.id, workout_id: workoutId, ...extraFields })
-      .select()
-      .single();
+    const id = generateUUID();
+    const { offline, error } = await insertRow('workout_logs', {
+      id,
+      user_id: session.user.id,
+      workout_id: workoutId,
+      started_at: new Date().toISOString(),
+      ...extraFields,
+    });
     setStarting(false);
 
     if (error) {
@@ -88,7 +102,14 @@ export default function WorkoutDetailScreen({ route, navigation }) {
       return;
     }
 
-    navigation.navigate('ActiveWorkout', { logId: log.id, workoutName, exercises: items });
+    if (offline) {
+      Alert.alert(
+        'Sem internet',
+        'Sem problema — pode treinar normalmente. Assim que seu celular conectar na internet, o treino é enviado pro seu personal automaticamente.'
+      );
+    }
+
+    navigation.navigate('ActiveWorkout', { logId: id, workoutName, exercises: items });
   };
 
   const handleIniciar = () => {
@@ -119,7 +140,8 @@ export default function WorkoutDetailScreen({ route, navigation }) {
     }
     setSkipping(true);
     const now = new Date().toISOString();
-    const { error } = await supabase.from('workout_logs').insert({
+    const { offline, error } = await insertRow('workout_logs', {
+      id: generateUUID(),
       user_id: session.user.id,
       workout_id: workoutId,
       started_at: now,
@@ -134,7 +156,12 @@ export default function WorkoutDetailScreen({ route, navigation }) {
     }
     setShowSkipModal(false);
     setSkipReason('');
-    Alert.alert('Tudo certo', 'Avisamos seu personal que você não vai treinar hoje.');
+    Alert.alert(
+      'Tudo certo',
+      offline
+        ? 'Guardado no aparelho — assim que voltar a internet, seu personal vai ser avisado que você não treinou hoje.'
+        : 'Avisamos seu personal que você não vai treinar hoje.'
+    );
     navigation.goBack();
   };
 
@@ -149,6 +176,17 @@ export default function WorkoutDetailScreen({ route, navigation }) {
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>{workoutName}</Text>
           {dayOfWeek ? <Text style={styles.dayLabel}>Programado para {DAY_LABEL[dayOfWeek] || dayOfWeek}</Text> : null}
+          {(workoutMeta?.goal || workoutMeta?.level) && (
+            <Text style={styles.metaLabel}>
+              {[workoutMeta?.goal, workoutMeta?.level].filter(Boolean).join(' · ')}
+            </Text>
+          )}
+          {workoutMeta?.period_start && workoutMeta?.period_end && (
+            <Text style={styles.metaLabel}>
+              {new Date(workoutMeta.period_start + 'T00:00:00').toLocaleDateString('pt-BR')} –{' '}
+              {new Date(workoutMeta.period_end + 'T00:00:00').toLocaleDateString('pt-BR')}
+            </Text>
+          )}
         </View>
         <TouchableOpacity onPress={() => navigation.navigate('CreateWorkout', { workoutId, workoutName })}>
           <Text style={styles.editLink}>Editar</Text>
@@ -162,12 +200,20 @@ export default function WorkoutDetailScreen({ route, navigation }) {
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={() => openVideo(item)}>
             <View style={styles.cardIcon}>
-              <Feather name="zap" size={17} color={colors.accent} />
+              <Feather name={item.exercises.exercise_type === 'cardio' ? 'heart' : 'zap'} size={17} color={colors.accent} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.exerciseName}>{item.exercises.name}</Text>
               <Text style={styles.exerciseDetail}>
-                {item.target_sets} séries x {item.target_reps} reps · {item.exercises.muscle_group}
+                {item.exercises.exercise_type === 'cardio'
+                  ? [
+                      item.target_duration_minutes ? `${item.target_duration_minutes} min` : null,
+                      item.target_distance_km ? `${item.target_distance_km} km` : null,
+                      item.target_intensity ? `intensidade ${item.target_intensity}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ') || 'Cardio'
+                  : `${item.target_sets} séries x ${item.target_reps} reps · ${item.exercises.muscle_group || ''}`}
               </Text>
             </View>
             {item.exercises.video_id ? (
@@ -255,6 +301,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 },
   title: { fontSize: 22, fontWeight: '800', color: colors.text },
   dayLabel: { color: colors.textDim, fontSize: 12, marginTop: 2 },
+  metaLabel: { color: colors.textDim2, fontSize: 11.5, marginTop: 2 },
   editLink: { color: colors.accent, fontSize: 14, fontWeight: '600' },
   card: {
     flexDirection: 'row',
