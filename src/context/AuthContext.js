@@ -126,11 +126,32 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      await loadProfile(session?.user?.id, session?.user);
-      setLoading(false);
-    });
+    const initSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        // Se JWT está inválido (issued at future, etc), faz logout e limpa
+        if (error) {
+          console.warn('Erro ao restaurar sessão:', error.message);
+          await supabase.auth.signOut();
+          setSession(null);
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
+        
+        setSession(session);
+        await loadProfile(session?.user?.id, session?.user);
+      } catch (err) {
+        console.error('Erro crítico ao restaurar sessão:', err);
+        setSession(null);
+        setProfile(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initSession();
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       // Enquanto estamos processando o deep link de recuperação, o próprio
