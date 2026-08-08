@@ -1,68 +1,134 @@
-// Tokens de design compartilhados por todo o app, extraídos do protótipo
-// HTML (Rasgua). Use estas constantes em qualquer tela nova para manter a
-// mesma "cara" (cores, espaçamentos e cantos arredondados) do protótipo.
-//
-// Import:
-//   import { colors, radius, spacing } from '../theme/theme';
+// src/theme/theme.js - Corrigido com Rasgua dark theme + redesign
 
-export const colors = {
-  bg: '#080B10',
-  surface: '#121821',
-  surface2: '#1A2230',
-  surface3: '#212B3A',
-  border: 'rgba(255,255,255,0.07)',
-  border2: 'rgba(255,255,255,0.12)',
-  text: '#F3F6F9',
-  textDim: '#8A97A6',
-  textDim2: '#5E6A78',
-  accent: '#33E28B',
-  accentDark: '#17B96F',
-  accentGlow: 'rgba(51,226,139,0.18)',
-  amber: '#FDB44E',
-  amberGlow: 'rgba(253,180,78,0.16)',
-  red: '#FB6467',
-  redGlow: 'rgba(251,100,103,0.16)',
-  blue: '#5B9BFF',
-  blueGlow: 'rgba(91,155,255,0.16)',
-};
+const Colors = {
+  // Background
+  bg: '#0A0C10',
+  surface: '#141821',
+  surface2: '#1B202B',
+  surface3: '#232938',
 
-export const radius = {
-  sm: 12,
-  md: 16,
-  lg: 20,
-  xl: 22,
-  pill: 20,
-};
+  // Lines & borders
+  line: '#2A3040',
+  border: '#2A3040',
 
-export const spacing = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
-  xxl: 24,
-};
+  // Text
+  text: '#F3F5F8',
+  textDim: '#8D96A6',
+  textDim2: '#8D96A6', // alias para compatibilidade
+  textFaint: '#565E6E',
 
-// Estilos reaproveitáveis mais comuns (cards de campo, chips, botões).
-// Continuam sendo StyleSheet.create nas próprias telas — isso aqui é só
-// para os valores brutos que se repetem em várias telas.
-export const typography = {
-  title: { fontWeight: '800', fontSize: 22, color: colors.text },
-  sectionTitle: { fontWeight: '700', fontSize: 16.5, color: colors.text },
-  eyebrow: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    letterSpacing: 0.9,
-    textTransform: 'uppercase',
-    color: colors.textDim2,
+  // Accent colors (lime é a cor principal)
+  accent: '#2FE6A0', // lime
+  accentDark: '#1E9E6E',
+  accentGlow: 'rgba(47,230,160,0.14)',
+  lime: '#2FE6A0',
+  amber: '#FFB648',
+  amberGlow: 'rgba(255,182,72,0.14)',
+  blue: '#4FA8FF',
+  blueGlow: 'rgba(79,168,255,0.14)',
+  red: '#FF5A7A',
+  redGlow: 'rgba(255,90,122,0.14)',
+  danger: '#FF5A7A',
+
+  // Segunda variante de borda (um pouco mais clara, usada em separadores/inputs)
+  border2: '#3A4356',
+
+  // Muscle group colors
+  muscleGroups: {
+    peito: '#FF6B4A',
+    costas: '#4FA8FF',
+    pernas: '#B388FF',
+    ombros: '#FFD166',
+    biceps: '#FF6BAE',
+    triceps: '#54E6B0',
+    abdomen: '#4FD8E8',
+    cardio: '#FF5A7A',
   },
-  fieldLabel: {
+};
+
+const Fonts = {
+  // Oswald (headings)
+  oswald700: {
+    fontFamily: 'Oswald_700Bold',
+    fontWeight: '700',
+  },
+  oswald600: {
+    fontFamily: 'Oswald_600SemiBold',
+    fontWeight: '600',
+  },
+  oswald500: {
+    fontFamily: 'Oswald_500Medium',
+    fontWeight: '500',
+  },
+
+  // Inter (body)
+  bold: {
+    fontFamily: 'Inter_700Bold',
+    fontWeight: '700',
+  },
+  semibold: {
+    fontFamily: 'Inter_600SemiBold',
+    fontWeight: '600',
+  },
+  medium: {
+    fontFamily: 'Inter_500Medium',
+    fontWeight: '500',
+  },
+  regular: {
+    fontFamily: 'Inter_400Regular',
+    fontWeight: '400',
+  },
+
+  // JetBrains Mono (mono)
+  monoSmall: {
+    fontFamily: 'JetBrainsMono_700Bold',
+    fontWeight: '700',
     fontSize: 10.5,
-    color: colors.textDim2,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    fontWeight: '700',
-    marginBottom: 4,
   },
-  fieldValue: { fontSize: 14.5, color: colors.text, fontWeight: '700' },
 };
+
+const Spacing = {
+  xs: 8,    // 8px
+  sm: 12,   // 12px
+  md: 16,   // 16px
+  lg: 18,   // 18px
+  xl: 24,   // 24px
+  xxl: 32,  // 32px
+};
+
+const BorderRadius = {
+  sm: 10,
+  md: 16,
+  lg: 22,
+  xl: 28,
+  xxl: 36,
+  pill: 999,
+};
+
+const radius = BorderRadius; // alias para compatibilidade com código atual
+
+// Exports em minúsculas para compatibilidade com código existente
+export const colors = Colors;
+export const spacing = Spacing;
+export const radius_export = radius;
+
+// Exports em maiúsculas para novos componentes
+export { Colors, Fonts, Spacing, BorderRadius };
+export { radius };
+
+// Retorna a cor associada a um grupo muscular (ou ao cardio), com fallback
+// pro accent quando o grupo não é reconhecido. Usado pra colorir ícones,
+// bordas e badges de exercício de forma consistente pelo app.
+function normalizeGroupKey(str) {
+  return (str || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+export function getMuscleColor(muscleGroup, exerciseType) {
+  if (exerciseType === 'cardio') return Colors.muscleGroups.cardio;
+  const key = normalizeGroupKey(muscleGroup);
+  return Colors.muscleGroups[key] || Colors.accent;
+}
