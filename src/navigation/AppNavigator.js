@@ -15,6 +15,7 @@ import HomeScreen from '../screens/HomeScreen';
 import WorkoutsScreen from '../screens/WorkoutsScreen';
 import CreateWorkoutScreen from '../screens/CreateWorkoutScreen';
 import WorkoutDetailScreen from '../screens/WorkoutDetailScreen';
+import BlockDaysScreen from '../screens/BlockDaysScreen';
 import ActiveWorkoutScreen from '../screens/ActiveWorkoutScreen';
 import UploadVideoScreen from '../screens/UploadVideoScreen';
 import VideoPlayerScreen from '../screens/VideoPlayerScreen';
@@ -122,6 +123,7 @@ function WorkoutsStack() {
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       <RootStack.Screen name="WorkoutsList" component={WorkoutsScreen} />
+      <RootStack.Screen name="BlockDays" component={BlockDaysScreen} />
       <RootStack.Screen name="CreateWorkout" component={CreateWorkoutScreen} />
       <RootStack.Screen name="WorkoutDetail" component={WorkoutDetailScreen} />
       <RootStack.Screen name="ActiveWorkout" component={ActiveWorkoutScreen} />
