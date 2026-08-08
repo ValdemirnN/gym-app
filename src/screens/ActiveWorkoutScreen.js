@@ -65,8 +65,12 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
   const allowedSubstitutesByExercise = {};
   exercises.forEach((item) => {
     allowedSubstitutesByExercise[item.exercises.id] = (item.workout_exercise_substitutes || [])
-      .map((s) => s.exercises)
-      .filter(Boolean);
+      .filter((s) => s.exercises)
+      .map((s) => ({
+        ...s.exercises,
+        target_sets: s.target_sets || item.target_sets,
+        target_reps: s.target_reps || item.target_reps,
+      }));
   });
 
   // modal: pular exercício
@@ -75,8 +79,12 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
 
   // modal: substituir exercício (só entre as opções que o personal cadastrou)
   const [subTarget, setSubTarget] = useState(null); // { exerciseId, name, options }
-  const [subChosen, setSubChosen] = useState(null); // { id, name }
+  const [subChosen, setSubChosen] = useState(null); // { id, name, target_sets, target_reps }
   const [subReasonText, setSubReasonText] = useState('');
+  const [subChosenSets, setSubChosenSets] = useState(0);
+  const [subChosenReps, setSubChosenReps] = useState(0);
+  const [subChosenInstructions, setSubChosenInstructions] = useState('');
+  const [subChosenVideoId, setSubChosenVideoId] = useState('');
 
   const updateSet = (exerciseId, index, field, value) => {
     setSets((prev) => {
@@ -154,6 +162,12 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
       Alert.alert('Escolha um exercício', 'Toque em um exercício da lista para substituir.');
       return;
     }
+    
+    const finalSets = subChosenSets || subChosen.target_sets || 1;
+    const finalReps = subChosenReps || subChosen.target_reps || 12;
+    const finalInstructions = subChosenInstructions || subChosen.execution_instructions || '';
+    const finalVideoId = subChosenVideoId || subChosen.video_id || null;
+    
     setExerciseStatus((prev) => ({
       ...prev,
       [subTarget.exerciseId]: {
@@ -161,11 +175,29 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
         substituteId: subChosen.id,
         substituteName: subChosen.name,
         reason: subReasonText.trim() || null,
+        customInstructions: finalInstructions,
+        customVideoId: finalVideoId,
       },
     }));
+    
+    // Cria novo array de sets com os valores finais (séries/reps editadas ou originais)
+    setSets((prev) => ({
+      ...prev,
+      [subTarget.exerciseId]: Array.from({ length: finalSets }, () => ({
+        reps: String(finalReps),
+        weight: '',
+        done: false,
+      })),
+    }));
+    
+    // Reset
     setSubTarget(null);
     setSubChosen(null);
     setSubReasonText('');
+    setSubChosenSets(0);
+    setSubChosenReps(0);
+    setSubChosenInstructions('');
+    setSubChosenVideoId('');
   };
 
   const openVideo = (item) => {
@@ -322,6 +354,9 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
                 )}
                 {item.exercises.instructions ? (
                   <Text style={styles.instructionsText}>{item.exercises.instructions}</Text>
+                ) : null}
+                {item.progression_note ? (
+                  <Text style={styles.progressionNote}>↗ {item.progression_note}</Text>
                 ) : null}
                 {item.exercises.video_id ? (
                   <TouchableOpacity style={styles.videoButton} onPress={() => openVideo(item)}>
@@ -481,50 +516,136 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
 
       {/* Modal: escolher exercício substituto */}
       <Modal visible={!!subTarget} transparent animationType="slide" onRequestClose={() => setSubTarget(null)}>
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Trocar "{subTarget?.name}" por qual exercício?</Text>
+            <ScrollView bounces={false}>
+              <Text style={styles.modalTitle}>Trocar "{subTarget?.name}" por qual exercício?</Text>
 
-            {subChosen ? (
-              <View style={styles.chosenRow}>
-                <Text style={styles.chosenText}>✓ {subChosen.name}</Text>
-                <TouchableOpacity onPress={() => setSubChosen(null)}>
-                  <Text style={styles.chosenRemove}>trocar</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <>
-                <Text style={styles.modalHint}>Escolhidos pelo seu personal pra esse exercício:</Text>
-                <FlatList
-                  style={{ maxHeight: 220 }}
-                  data={subTarget?.options || []}
-                  keyExtractor={(e) => e.id}
-                  ListEmptyComponent={<Text style={styles.modalEmpty}>Nenhum exercício cadastrado.</Text>}
-                  renderItem={({ item: ex }) => (
-                    <TouchableOpacity style={styles.catalogRow} onPress={() => setSubChosen(ex)}>
-                      <Text style={styles.catalogRowText}>{ex.name}</Text>
-                      {ex.muscle_group ? <Text style={styles.catalogRowGroup}>{ex.muscle_group}</Text> : null}
+              {subChosen ? (
+                <View style={styles.chosenDetail}>
+                  <View style={styles.chosenHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.chosenText}>{subChosen.name}</Text>
+                      {subChosen.muscle_group && (
+                        <Text style={styles.chosenGroup}>{subChosen.muscle_group}</Text>
+                      )}
+                    </View>
+                    <TouchableOpacity onPress={() => {
+                      setSubChosen(null);
+                      setSubChosenSets(0);
+                      setSubChosenReps(0);
+                      setSubChosenInstructions('');
+                      setSubChosenVideoId('');
+                    }}>
+                      <Text style={styles.chosenRemove}>✕</Text>
                     </TouchableOpacity>
-                  )}
-                />
-              </>
-            )}
+                  </View>
 
-            <TextInput
-              style={[styles.modalTextArea, { marginTop: 12 }]}
-              placeholder="Motivo da troca (opcional)"
-              placeholderTextColor={colors.textDim2}
-              value={subReasonText}
-              onChangeText={setSubReasonText}
-              multiline
-            />
+                    {/* Séries e reps */}
+                  <Text style={styles.detailLabel}>Séries x repetições</Text>
+                  <View style={styles.repsRow}>
+                    <View style={styles.repsControl}>
+                      <TouchableOpacity onPress={() => setSubChosenSets(Math.max(1, subChosenSets - 1))} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+                        <Text style={styles.repsBtn}>−</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.repsValue}>{subChosenSets || subChosen.target_sets || 1}</Text>
+                      <TouchableOpacity onPress={() => setSubChosenSets((subChosenSets || subChosen.target_sets || 1) + 1)} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+                        <Text style={styles.repsBtn}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.repsX}>x</Text>
+                    <View style={styles.repsControl}>
+                      <TouchableOpacity onPress={() => setSubChosenReps(Math.max(1, subChosenReps - 1))} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+                        <Text style={styles.repsBtn}>−</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.repsValue}>{subChosenReps || subChosen.target_reps || 12}</Text>
+                      <TouchableOpacity onPress={() => setSubChosenReps((subChosenReps || subChosen.target_reps || 12) + 1)} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+                        <Text style={styles.repsBtn}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
 
-            <TouchableOpacity style={styles.modalConfirm} onPress={confirmSubstitute}>
-              <Text style={styles.modalConfirmText}>Confirmar substituição</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.modalClose} onPress={() => setSubTarget(null)}>
-              <Text style={styles.modalCloseText}>Cancelar</Text>
-            </TouchableOpacity>
+                  {/* Instruções - EDITÁVEL */}
+                  <Text style={styles.detailLabel}>Instruções de execução</Text>
+                  <TextInput
+                    style={styles.instructionsInput}
+                    placeholder="Adicionar instruções personalizadas (opcional)"
+                    placeholderTextColor={colors.textDim2}
+                    value={subChosenInstructions || subChosen.execution_instructions || ''}
+                    onChangeText={setSubChosenInstructions}
+                    multiline
+                    maxHeight={80}
+                  />
+
+                  {/* Vídeo - COM FUNÇÃO */}
+                  <Text style={styles.detailLabel}>Vídeo de demonstração</Text>
+                  <TouchableOpacity 
+                    style={styles.videoButton}
+                    onPress={() => {
+                      navigation.navigate('UploadVideo', {
+                        exerciseId: subChosen.id,
+                        exerciseName: subChosen.name,
+                        returnScreen: 'ActiveWorkout',
+                        onVideoAdded: (videoId) => {
+                          setSubChosenVideoId(videoId);
+                        },
+                      });
+                    }}
+                  >
+                    <Feather name={subChosenVideoId || subChosen.video_id ? 'film' : 'video-off'} size={16} color={colors.accent} />
+                    <Text style={styles.videoButtonText}>
+                      {subChosenVideoId || subChosen.video_id ? '✓ Vídeo anexado' : '+ Anexar vídeo'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <Text style={styles.modalHint}>Escolhidos pelo seu personal pra esse exercício:</Text>
+                  <FlatList
+                    scrollEnabled={false}
+                    data={subTarget?.options || []}
+                    keyExtractor={(e) => e.id}
+                    ListEmptyComponent={<Text style={styles.modalEmpty}>Nenhum exercício cadastrado.</Text>}
+                    renderItem={({ item: ex }) => (
+                      <TouchableOpacity style={styles.catalogRow} onPress={() => {
+                        setSubChosen(ex);
+                        setSubChosenSets(0);
+                        setSubChosenReps(0);
+                        setSubChosenInstructions('');
+                        setSubChosenVideoId('');
+                      }}>
+                        <Text style={styles.catalogRowText}>{ex.name}</Text>
+                        {ex.muscle_group ? <Text style={styles.catalogRowGroup}>{ex.muscle_group}</Text> : null}
+                      </TouchableOpacity>
+                    )}
+                  />
+                </>
+              )}
+
+              <TextInput
+                style={[styles.modalTextArea, { marginTop: 12 }]}
+                placeholder="Motivo da troca (opcional)"
+                placeholderTextColor={colors.textDim2}
+                value={subReasonText}
+                onChangeText={setSubReasonText}
+                multiline
+              />
+
+              <TouchableOpacity style={styles.modalConfirm} onPress={confirmSubstitute}>
+                <Text style={styles.modalConfirmText}>Adicionar substituto</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalClose} onPress={() => {
+                setSubTarget(null);
+                setSubChosen(null);
+                setSubReasonText('');
+                setSubChosenSets(0);
+                setSubChosenReps(0);
+                setSubChosenInstructions('');
+                setSubChosenVideoId('');
+              }}>
+                <Text style={styles.modalCloseText}>Cancelar</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -741,6 +862,7 @@ const styles = StyleSheet.create({
   comboBadge: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   comboBadgeText: { color: colors.amber, fontSize: 11, fontWeight: '700' },
   instructionsText: { color: colors.textDim, fontSize: 12, lineHeight: 17, marginTop: 6 },
+  progressionNote: { color: colors.amber, fontSize: 12, fontWeight: '600', marginTop: 6 },
   videoButtonText: { color: colors.accent, fontSize: 12, fontWeight: '600', marginLeft: 4 },
   modalInput: {
     backgroundColor: colors.surface,
@@ -782,8 +904,100 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 4,
   },
-  chosenText: { color: colors.accent, fontSize: 14, fontWeight: '600' },
-  chosenRemove: { color: colors.textDim, fontSize: 12, textDecorationLine: 'underline' },
+  chosenText: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  chosenRemove: { color: colors.textDim2, fontSize: 16, fontWeight: '600' },
+  chosenDetail: {
+    backgroundColor: colors.surface2,
+    borderRadius: radius.md,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  chosenHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  chosenGroup: {
+    fontSize: 12,
+    color: colors.textDim,
+    marginTop: 4,
+  },
+  detailLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  detailText: {
+    fontSize: 12,
+    color: colors.textDim,
+    fontStyle: 'italic',
+    lineHeight: 16,
+  },
+  repsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  repsControl: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bg,
+    borderRadius: radius.sm,
+    paddingHorizontal: 0,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  repsBtn: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.accent,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  repsValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    paddingHorizontal: 8,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: colors.accent,
+    paddingVertical: 6,
+  },
+  repsX: {
+    fontSize: 14,
+    color: colors.textDim,
+    marginHorizontal: 12,
+    fontWeight: '600',
+  },
+  instructionsInput: {
+    backgroundColor: colors.bg,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: radius.sm,
+    padding: 10,
+    fontSize: 12,
+    minHeight: 50,
+    maxHeight: 80,
+    textAlignVertical: 'top',
+    marginBottom: 12,
+  },
+  videoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: radius.sm,
+    paddingVertical: 12,
+  },
   modalConfirm: { backgroundColor: colors.accent, borderRadius: radius.sm, padding: 14, alignItems: 'center', marginTop: 14 },
   modalConfirmText: { color: '#04170F', fontWeight: '700', fontSize: 15 },
   modalClose: { marginTop: 10, alignItems: 'center', paddingVertical: 8 },

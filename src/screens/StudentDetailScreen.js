@@ -38,7 +38,7 @@ function getAccessInfo(student) {
   return { text: 'Ativo', color: colors.accent, glow: colors.accentGlow };
 }
 
-function getDayStatus(dayIndex, isDone) {
+function getDayStatus(dayIndex, isDone, isSkipped) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const startOfWeek = new Date(today);
@@ -46,13 +46,11 @@ function getDayStatus(dayIndex, isDone) {
   const dayDate = new Date(startOfWeek);
   dayDate.setDate(startOfWeek.getDate() + dayIndex);
 
-  // Domingo é tratado como "dia extra" (não é dia de treino obrigatório) —
-  // só vira check de verdade se o aluno treinou por conta própria.
-  if (dayIndex === 0) return isDone ? 'done' : 'extra';
-
+  if (isSkipped) return 'skipped'; // aluno marcou que não treinou
+  if (dayIndex === 0) return isDone ? 'done' : 'extra'; // domingo = dia extra
   if (isDone) return 'done';
-  if (dayDate.getTime() > today.getTime()) return 'upcoming'; // ainda vai acontecer
-  return 'missed'; // já passou e não teve treino concluído
+  if (dayDate.getTime() > today.getTime()) return 'upcoming';
+  return 'missed';
 }
 
 export default function StudentDetailScreen({ route, navigation }) {
@@ -61,7 +59,10 @@ export default function StudentDetailScreen({ route, navigation }) {
   const [updatingAccess, setUpdatingAccess] = useState(false);
   const [consistency, setConsistency] = useState({ percentual: 0, treinosSemana: 0, metaTreinos: 0, exerciciosSemana: 0 });
 
-  const [weekDays, setWeekDays] = useState([false, false, false, false, false, false, false]); // dom..sáb
+  // Cada pos: { done: bool, skipped: bool }
+  const [weekDays, setWeekDays] = useState(
+    Array.from({length:7},()=>({done:false,skipped:false}))
+  );
   const [generatingReport, setGeneratingReport] = useState(false);
 
   const handleGenerateReport = async () => {
@@ -93,10 +94,22 @@ export default function StudentDetailScreen({ route, navigation }) {
       .not('finished_at', 'is', null)
       .is('skipped', false);
 
-    const days = [false, false, false, false, false, false, false];
+    const days = Array.from({length:7},()=>({done:false,skipped:false}));
     (weekLogs || []).forEach((log) => {
       const d = new Date(log.started_at).getDay();
-      days[d] = true;
+      days[d].done = true;
+    });
+
+    // Buscar dias marcados como "não treinou" nessa semana
+    const { data: skippedLogs } = await supabase
+      .from('workout_logs')
+      .select('started_at')
+      .eq('user_id', studentId)
+      .gte('started_at', startOfWeek.toISOString())
+      .eq('skipped', true);
+    (skippedLogs || []).forEach((log) => {
+      const d = new Date(log.started_at).getDay();
+      if (!days[d].done) days[d].skipped = true;
     });
     setWeekDays(days);
     // Consistência do ALUNO (não confundir com a média geral do dashboard):
@@ -198,28 +211,33 @@ export default function StudentDetailScreen({ route, navigation }) {
         <Text style={styles.weekTitle}>Semana atual</Text>
         <View style={styles.weekRow}>
           {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((label, i) => {
-            const status = getDayStatus(i, weekDays[i]);
+            const dayInfo = weekDays[i] || {done:false,skipped:false};
+            const status = getDayStatus(i, dayInfo.done, dayInfo.skipped);
             const iconByStatus = {
-              done: { name: 'check', color: '#04170F', bg: colors.accent, border: colors.accent },
-              missed: { name: 'x', color: colors.textDim2, bg: 'transparent', border: colors.border },
-              upcoming: { name: 'help-circle', color: colors.textDim2, bg: 'transparent', border: colors.border },
-              extra: { name: 'alert-circle', color: colors.amber, bg: 'transparent', border: colors.amber },
-            }[status];
+              done:     { name: 'check', color: '#04170F', bg: colors.accent, border: colors.accent, emoji: null },
+              skipped:  { name: null, color: '#FF64B4', bg: 'rgba(255,100,180,0.15)', border: '#FF64B4', emoji: '❌' },
+              missed:   { name: 'x', color: colors.textDim2, bg: 'transparent', border: colors.border, emoji: null },
+              upcoming: { name: 'help-circle', color: colors.textDim2, bg: 'transparent', border: colors.border, emoji: null },
+              extra:    { name: 'alert-circle', color: colors.amber, bg: 'transparent', border: colors.amber, emoji: null },
+            }[status] || { name: 'circle', color: colors.textDim2, bg: 'transparent', border: colors.border, emoji: null };
             return (
               <View key={i} style={styles.weekDayCol}>
                 <View style={[styles.weekDot, { backgroundColor: iconByStatus.bg, borderColor: iconByStatus.border }]}>
-                  <Feather name={iconByStatus.name} size={13} color={iconByStatus.color} />
+                  {iconByStatus.emoji
+                    ? <Text style={{fontSize:10}}>{iconByStatus.emoji}</Text>
+                    : <Feather name={iconByStatus.name} size={13} color={iconByStatus.color} />
+                  }
                 </View>
-                <Text style={styles.weekDayLabel}>{label}</Text>
+                <Text style={[styles.weekDayLabel, status === 'skipped' && {color:'#FF64B4'}]}>{label}</Text>
               </View>
             );
           })}
         </View>
         <View style={styles.weekLegend}>
           <Text style={styles.weekLegendItem}>✓ concluído</Text>
-          <Text style={styles.weekLegendItem}>✕ não treinou</Text>
+          <Text style={[styles.weekLegendItem, {color:'#FF64B4'}]}>❌ não foi treinar</Text>
+          <Text style={styles.weekLegendItem}>✕ faltou (sem registro)</Text>
           <Text style={styles.weekLegendItem}>? ainda vai chegar</Text>
-          <Text style={styles.weekLegendItem}>! domingo é dia extra</Text>
         </View>
       </View>
 

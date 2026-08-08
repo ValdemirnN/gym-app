@@ -1,13 +1,31 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  ActivityIndicator,
+  LayoutAnimation,
+  UIManager,
+  Platform,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { colors, radius } from '../theme/theme';
 
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 function formatDate(dateStr) {
   const d = new Date(dateStr);
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function formatTime(dateStr) {
+  return new Date(dateStr).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDuration(startStr, endStr) {
@@ -19,6 +37,207 @@ function formatDuration(startStr, endStr) {
   return `${h}h${m > 0 ? m + 'min' : ''}`;
 }
 
+function groupSetsByExercise(sets) {
+  const order = [];
+  const map = {};
+  (sets || []).forEach((s) => {
+    const exId = s.exercise_id;
+    if (!map[exId]) {
+      map[exId] = { exerciseName: s.exercises?.name || 'Exercício removido', sets: [] };
+      order.push(exId);
+    }
+    map[exId].sets.push(s);
+  });
+  return order.map((exId) => map[exId]);
+}
+
+// Componente de card expandível por sessão
+function LogCard({ item, studentName }) {
+  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [exerciseGroups, setExerciseGroups] = useState(null);
+  const [exerciseNotes, setExerciseNotes] = useState(null);
+  const [logDetail, setLogDetail] = useState(null);
+
+  const duration = formatDuration(item.started_at, item.finished_at);
+  const status = item.skipped ? 'skipped' : item.finished_at ? 'done' : 'pending';
+
+  const handleExpand = async () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (expanded) {
+      setExpanded(false);
+      return;
+    }
+    setExpanded(true);
+    if (exerciseGroups !== null) return; // já carregou
+
+    setLoading(true);
+
+    const [setsRes, statusRes, logRes] = await Promise.all([
+      supabase
+        .from('workout_log_sets')
+        .select('id, exercise_id, set_number, reps_done, weight_kg, exercises(name)')
+        .eq('workout_log_id', item.id)
+        .order('set_number'),
+      supabase
+        .from('workout_log_exercise_status')
+        .select('id, status, reason, exercises:exercise_id(name), substitute:substitute_exercise_id(name)')
+        .eq('workout_log_id', item.id),
+      supabase
+        .from('workout_logs')
+        .select('feedback_mood, feedback_comment, day_change_reason')
+        .eq('id', item.id)
+        .single(),
+    ]);
+
+    setExerciseGroups(groupSetsByExercise(setsRes.data || []));
+    setExerciseNotes(statusRes.data || []);
+    setLogDetail(logRes.data || null);
+    setLoading(false);
+  };
+
+  const MOOD_LABEL = {
+    leve: '😌 Tranquilo',
+    moderado: '💪 Moderado',
+    dificil: '😤 Difícil',
+    exaustao: '🥵 Exaustão máxima',
+  };
+
+  return (
+    <TouchableOpacity
+      style={[
+        styles.card,
+        status === 'skipped' && styles.cardSkipped,
+        status === 'done' && styles.cardDone,
+      ]}
+      activeOpacity={0.8}
+      onPress={handleExpand}
+    >
+      {/* ── Header do card ── */}
+      <View style={styles.cardHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.cardTitle}>{item.workouts?.name || 'Treino removido'}</Text>
+          <Text style={styles.cardSubtitle}>
+            {formatDate(item.started_at)} · {formatTime(item.started_at)}
+          </Text>
+          {item.skipped && item.skip_reason ? (
+            <Text style={styles.reasonText} numberOfLines={2}>
+              Motivo: {item.skip_reason}
+            </Text>
+          ) : null}
+          {!item.skipped && item.day_change_reason ? (
+            <View style={styles.dayChangePill}>
+              <Feather name="alert-circle" size={11} color={colors.amber} />
+              <Text style={styles.dayChangePillText}>Trocou o dia do treino</Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={{ alignItems: 'flex-end', gap: 6 }}>
+          {status === 'done' ? (
+            <View style={styles.badgeDone}>
+              <Text style={styles.badgeDoneText}>{duration || '✅ Concluído'}</Text>
+            </View>
+          ) : status === 'pending' ? (
+            <View style={styles.badgePending}>
+              <Text style={styles.badgePendingText}>Em andamento</Text>
+            </View>
+          ) : (
+            <View style={styles.badgeSkipped}>
+              <Text style={styles.badgeSkippedText}>❌ Não treinou</Text>
+            </View>
+          )}
+          <Feather
+            name={expanded ? 'chevron-up' : 'chevron-down'}
+            size={14}
+            color={colors.textDim2}
+          />
+        </View>
+      </View>
+
+      {/* ── Conteúdo expandido ── */}
+      {expanded && (
+        <View style={styles.expandedBody}>
+          {loading ? (
+            <ActivityIndicator color={colors.accent} style={{ marginTop: 12 }} />
+          ) : (
+            <>
+              {/* Comentário e mood do aluno */}
+              {(logDetail?.feedback_comment || logDetail?.feedback_mood || logDetail?.day_change_reason) && (
+                <View style={styles.feedbackBox}>
+                  <Text style={styles.feedbackBoxTitle}>
+                    <Feather name="message-square" size={12} color={colors.accent} /> Observações do aluno
+                  </Text>
+                  {logDetail?.feedback_mood && (
+                    <Text style={styles.feedbackMood}>
+                      Sensação: {MOOD_LABEL[logDetail.feedback_mood] || logDetail.feedback_mood}
+                    </Text>
+                  )}
+                  {logDetail?.feedback_comment ? (
+                    <Text style={styles.feedbackComment}>"{logDetail.feedback_comment}"</Text>
+                  ) : null}
+                  {logDetail?.day_change_reason ? (
+                    <Text style={styles.feedbackDayChange}>
+                      Motivo da troca de dia: {logDetail.day_change_reason}
+                    </Text>
+                  ) : null}
+                </View>
+              )}
+
+              {/* Alterações (pulos/substituições) */}
+              {(exerciseNotes || []).length > 0 && (
+                <View style={styles.notesBlock}>
+                  <Text style={styles.blockLabel}>Alterações feitas</Text>
+                  {(exerciseNotes || []).map((note) => (
+                    <View key={note.id} style={styles.noteRow}>
+                      <Feather
+                        name={note.status === 'pulado' ? 'x-circle' : 'refresh-cw'}
+                        size={13}
+                        color={note.status === 'pulado' ? colors.red : colors.amber}
+                      />
+                      <Text style={styles.noteText}>
+                        {note.status === 'pulado'
+                          ? `Pulou ${note.exercises?.name || 'exercício'}`
+                          : `Trocou ${note.exercises?.name || 'exercício'} por ${note.substitute?.name || '?'}`}
+                        {note.reason ? ` — ${note.reason}` : ''}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Exercícios realizados */}
+              {!item.skipped && (
+                <>
+                  <Text style={styles.blockLabel}>Exercícios realizados</Text>
+                  {(exerciseGroups || []).length === 0 ? (
+                    <Text style={styles.emptyDetail}>Nenhuma série registrada nessa sessão.</Text>
+                  ) : (
+                    (exerciseGroups || []).map((group, idx) => (
+                      <View key={idx} style={styles.exerciseBlock}>
+                        <Text style={styles.exerciseName}>{group.exerciseName}</Text>
+                        {group.sets.map((s) => (
+                          <View key={s.id} style={styles.setRow}>
+                            <Text style={styles.setLabel}>Série {s.set_number}</Text>
+                            <Text style={styles.setValue}>
+                              {s.reps_done ?? '-'} reps
+                              {s.weight_kg ? ` · ${s.weight_kg}kg` : ''}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    ))
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
 export default function StudentHistoryScreen({ route, navigation }) {
   const { studentId, studentName } = route.params;
   const [logs, setLogs] = useState([]);
@@ -27,7 +246,9 @@ export default function StudentHistoryScreen({ route, navigation }) {
   const load = useCallback(async () => {
     const { data: logsData } = await supabase
       .from('workout_logs')
-      .select('id, started_at, finished_at, skipped, skip_reason, day_change_reason, workouts(name)')
+      .select(
+        'id, started_at, finished_at, skipped, skip_reason, day_change_reason, workouts(name)'
+      )
       .eq('user_id', studentId)
       .order('started_at', { ascending: false });
     setLogs(logsData || []);
@@ -47,10 +268,13 @@ export default function StudentHistoryScreen({ route, navigation }) {
     }, [load])
   );
 
-  const concluidos = logs.filter((l) => l.finished_at).length;
+  const concluidos = logs.filter((l) => l.finished_at && !l.skipped).length;
+  const naoPagos = logs.filter((l) => l.skipped).length;
 
   const diasComTreinoAtual = currentWorkout
-    ? Math.floor((Date.now() - new Date(currentWorkout.created_at).getTime()) / (1000 * 60 * 60 * 24))
+    ? Math.floor(
+        (Date.now() - new Date(currentWorkout.created_at).getTime()) / (1000 * 60 * 60 * 24)
+      )
     : null;
 
   return (
@@ -65,100 +289,191 @@ export default function StudentHistoryScreen({ route, navigation }) {
       <View style={styles.summaryRow}>
         <View style={styles.summaryCard}>
           <Text style={styles.summaryValue}>{concluidos}</Text>
-          <Text style={styles.summaryLabel}>Treinos concluídos</Text>
+          <Text style={styles.summaryLabel}>✅ Concluídos</Text>
+        </View>
+        <View style={[styles.summaryCard, naoPagos > 0 && styles.summaryCardSkipped]}>
+          <Text style={[styles.summaryValue, naoPagos > 0 && { color: '#FF64B4' }]}>{naoPagos}</Text>
+          <Text style={styles.summaryLabel}>❌ Não treinou</Text>
         </View>
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryValue}>{diasComTreinoAtual !== null ? `${diasComTreinoAtual}d` : '-'}</Text>
+          <Text style={styles.summaryValue}>
+            {diasComTreinoAtual !== null ? `${diasComTreinoAtual}d` : '-'}
+          </Text>
           <Text style={styles.summaryLabel}>
-            {currentWorkout ? `Nesse treino (${currentWorkout.name})` : 'Sem treino atual'}
+            {currentWorkout ? currentWorkout.name : 'Sem treino'}
           </Text>
         </View>
       </View>
 
+      <Text style={styles.tapHint}>Toque no card para ver detalhes e comentários</Text>
+
       <FlatList
         data={logs}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 20 }}
-        ListEmptyComponent={<Text style={styles.empty}>Nenhuma sessão de treino registrada ainda.</Text>}
-        renderItem={({ item }) => {
-          const duration = formatDuration(item.started_at, item.finished_at);
-          return (
-            <TouchableOpacity
-              style={styles.card}
-              activeOpacity={0.8}
-              onPress={() =>
-                navigation.navigate('StudentWorkoutLogDetail', {
-                  logId: item.id,
-                  studentName,
-                  workoutName: item.workouts?.name,
-                })
-              }
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>{item.workouts?.name || 'Treino removido'}</Text>
-                <Text style={styles.cardSubtitle}>{formatDate(item.started_at)}</Text>
-                {item.skipped && item.skip_reason ? (
-                  <Text style={styles.reasonText} numberOfLines={2}>Motivo: {item.skip_reason}</Text>
-                ) : null}
-                {!item.skipped && item.day_change_reason ? (
-                  <Text style={styles.reasonText} numberOfLines={2}>Trocou o dia: {item.day_change_reason}</Text>
-                ) : null}
-              </View>
-              {item.skipped ? (
-                <View style={styles.badgeSkipped}>
-                  <Text style={styles.badgeSkippedText}>Não treinou</Text>
-                </View>
-              ) : item.finished_at ? (
-                <View style={styles.badgeDone}>
-                  <Text style={styles.badgeDoneText}>{duration || 'Concluído'}</Text>
-                </View>
-              ) : (
-                <View style={styles.badgePending}>
-                  <Text style={styles.badgePendingText}>Em andamento</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          );
-        }}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        ListEmptyComponent={
+          <Text style={styles.empty}>Nenhuma sessão de treino registrada ainda.</Text>
+        }
+        renderItem={({ item }) => (
+          <LogCard item={item} studentName={studentName} />
+        )}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: 60 },
+  container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 18, paddingTop: 60 },
   backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginLeft: -4 },
   back: { color: colors.text, fontSize: 15, marginLeft: 2 },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 16 },
-  summaryRow: { flexDirection: 'row', marginBottom: 20, gap: 10 },
+  title: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 14 },
+
+  summaryRow: { flexDirection: 'row', marginBottom: 12, gap: 8 },
   summaryCard: {
     flex: 1,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    padding: 14,
+    padding: 12,
   },
-  summaryValue: { color: colors.text, fontSize: 22, fontWeight: '800' },
-  summaryLabel: { color: colors.textDim, fontSize: 11, marginTop: 4 },
+  summaryCardSkipped: {
+    backgroundColor: 'rgba(255,100,180,0.08)',
+    borderColor: 'rgba(255,100,180,0.3)',
+  },
+  summaryValue: { color: colors.text, fontSize: 20, fontWeight: '800' },
+  summaryLabel: { color: colors.textDim, fontSize: 10.5, marginTop: 4, lineHeight: 14 },
+
+  tapHint: {
+    color: colors.textDim2,
+    fontSize: 11,
+    marginBottom: 10,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+
   empty: { color: colors.textDim, textAlign: 'center', marginTop: 40, fontSize: 14 },
+
+  // Cards
   card: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
     padding: 14,
-    marginBottom: 8,
+    marginBottom: 10,
+  },
+  cardDone: { borderLeftWidth: 3, borderLeftColor: colors.accent },
+  cardSkipped: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#FF64B4',
+    backgroundColor: 'rgba(255,100,180,0.05)',
+  },
+  cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  cardTitle: { color: colors.text, fontSize: 14.5, fontWeight: '700' },
+  cardSubtitle: { color: colors.textDim, fontSize: 11.5, marginTop: 2 },
+  reasonText: { color: '#FF64B4', fontSize: 11, marginTop: 4, fontStyle: 'italic' },
+  dayChangePill: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
+    marginTop: 5,
+    backgroundColor: colors.amberGlow,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 100,
   },
-  cardTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  cardSubtitle: { color: colors.textDim, fontSize: 12, marginTop: 2 },
-  badgeDone: { backgroundColor: colors.accentGlow, borderRadius: radius.sm - 4, paddingHorizontal: 10, paddingVertical: 5 },
-  badgeDoneText: { color: colors.accent, fontSize: 12, fontWeight: '700' },
-  badgePending: { backgroundColor: colors.amberGlow, borderRadius: radius.sm - 4, paddingHorizontal: 10, paddingVertical: 5 },
-  badgePendingText: { color: colors.amber, fontSize: 12, fontWeight: '700' },
-  badgeSkipped: { backgroundColor: colors.redGlow, borderRadius: radius.sm - 4, paddingHorizontal: 10, paddingVertical: 5 },
-  badgeSkippedText: { color: colors.red, fontSize: 12, fontWeight: '700' },
-  reasonText: { color: colors.textDim, fontSize: 11, marginTop: 4, fontStyle: 'italic' },
+  dayChangePillText: { color: colors.amber, fontSize: 10, fontWeight: '700' },
+
+  badgeDone: {
+    backgroundColor: colors.accentGlow,
+    borderRadius: radius.sm - 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  badgeDoneText: { color: colors.accent, fontSize: 11, fontWeight: '700' },
+  badgePending: {
+    backgroundColor: colors.amberGlow,
+    borderRadius: radius.sm - 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  badgePendingText: { color: colors.amber, fontSize: 11, fontWeight: '700' },
+  badgeSkipped: {
+    backgroundColor: 'rgba(255,100,180,0.15)',
+    borderRadius: radius.sm - 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  badgeSkippedText: { color: '#FF64B4', fontSize: 11, fontWeight: '700' },
+
+  // Expanded
+  expandedBody: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    borderStyle: 'dashed',
+  },
+
+  feedbackBox: {
+    backgroundColor: colors.accentGlow,
+    borderRadius: radius.sm,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(51,226,139,0.25)',
+  },
+  feedbackBoxTitle: {
+    color: colors.accent,
+    fontSize: 11.5,
+    fontWeight: '700',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  feedbackMood: { color: colors.text, fontSize: 13, fontWeight: '600', marginBottom: 4 },
+  feedbackComment: {
+    color: colors.textDim,
+    fontSize: 13,
+    fontStyle: 'italic',
+    lineHeight: 18,
+    marginBottom: 4,
+  },
+  feedbackDayChange: { color: colors.amber, fontSize: 12, marginTop: 4 },
+
+  notesBlock: { marginBottom: 12 },
+  blockLabel: {
+    color: colors.textDim2,
+    fontSize: 10.5,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  noteRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 5 },
+  noteText: { color: colors.textDim, fontSize: 12.5, flex: 1, lineHeight: 17 },
+
+  exerciseBlock: {
+    backgroundColor: colors.surface2,
+    borderRadius: radius.sm,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.accent,
+  },
+  exerciseName: { color: colors.text, fontSize: 13.5, fontWeight: '700', marginBottom: 6 },
+  setRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 5,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  setLabel: { color: colors.textDim, fontSize: 12 },
+  setValue: { color: colors.accent, fontSize: 12, fontWeight: '700' },
+  emptyDetail: { color: colors.textDim, fontSize: 13, textAlign: 'center', paddingVertical: 10 },
 });

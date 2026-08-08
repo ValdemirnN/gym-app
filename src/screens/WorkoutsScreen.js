@@ -1,5 +1,11 @@
 import React, { useCallback, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SectionList, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
@@ -7,42 +13,66 @@ import { useAuth } from '../context/AuthContext';
 import { colors, radius } from '../theme/theme';
 import { getPendingCount, onQueueChange } from '../lib/syncManager';
 
-const DAY_ORDER = ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo', null];
-const DAY_LABEL = {
-  segunda: 'Segunda-feira',
-  terca: 'Terça-feira',
-  quarta: 'Quarta-feira',
-  quinta: 'Quinta-feira',
-  sexta: 'Sexta-feira',
-  sabado: 'Sábado',
-  domingo: 'Domingo',
-};
-
-function groupByDay(workouts) {
-  const groups = {};
-  workouts.forEach((w) => {
-    const key = w.day_of_week || null;
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(w);
-  });
-  return DAY_ORDER.filter((key) => groups[key]).map((key) => ({
-    title: key ? DAY_LABEL[key] : 'Sem dia definido',
-    data: groups[key],
-  }));
+function diasDesde(dateStr) {
+  if (!dateStr) return 'hoje';
+  const dias = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24));
+  if (dias <= 0) return 'hoje';
+  if (dias === 1) return 'há 1 dia';
+  return `há ${dias} dias`;
 }
 
+// ─── Componente: card de bloco na lista (mesmo visual usado pelo personal,
+// só que aqui é sempre somente leitura — o aluno só entra pra ver/executar) ──
+function BlockCard({ block, onPress }) {
+  const isActive = block.isActive;
+
+  return (
+    <TouchableOpacity style={styles.blockCard} onPress={onPress} activeOpacity={0.8}>
+      <View style={styles.blockCardContent}>
+        <View style={styles.blockIcon}>
+          <Feather name="layers" size={18} color={colors.accent} />
+        </View>
+
+        <View style={styles.blockInfo}>
+          <View
+            style={[
+              styles.statusPill,
+              isActive ? styles.statusPillAndamento : styles.statusPillConcluido,
+            ]}
+          >
+            <View style={[styles.statusDot, { backgroundColor: isActive ? colors.amber : colors.textDim }]} />
+            <Text style={[styles.statusText, { color: isActive ? colors.amber : colors.textDim }]}>
+              {isActive ? 'Em andamento' : 'Concluído'}
+            </Text>
+          </View>
+          <Text style={styles.blockTitle}>{[block.goal, block.level].filter(Boolean).join(' · ') || 'Treino'}</Text>
+          <View style={styles.blockMeta}>
+            <Text style={styles.blockMetaText}>
+              {block.workouts.length} treino{block.workouts.length === 1 ? '' : 's'}
+            </Text>
+            <View style={styles.metaDot} />
+            <Text style={styles.blockMetaText}>criado {diasDesde(block.created_at)}</Text>
+          </View>
+        </View>
+
+        <Feather name="chevron-right" size={16} color={colors.textDim2} />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// ─── Tela principal ──────────────────────────────────────────────────────────
 export default function WorkoutsScreen({ navigation }) {
   const { session } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
+  const [allWorkouts, setAllWorkouts] = useState([]);
+  const [tab, setTab] = useState('ativos');
 
   useEffect(() => {
     getPendingCount().then(setPendingCount);
     const unsubscribe = onQueueChange(setPendingCount);
     return unsubscribe;
   }, []);
-
-  const [allWorkouts, setAllWorkouts] = useState([]);
-  const [tab, setTab] = useState('rotinas'); // 'rotinas' | 'aerobico'
 
   const loadWorkouts = useCallback(async () => {
     const { data } = await supabase
@@ -51,19 +81,7 @@ export default function WorkoutsScreen({ navigation }) {
       .eq('user_id', session.user.id)
       .order('created_at', { ascending: false });
 
-    const workoutIds = (data || []).map((w) => w.id);
-    let cardioWorkoutIds = new Set();
-    if (workoutIds.length > 0) {
-      const { data: exRows } = await supabase
-        .from('workout_exercises')
-        .select('workout_id, exercises(exercise_type)')
-        .in('workout_id', workoutIds);
-      (exRows || []).forEach((r) => {
-        if (r.exercises?.exercise_type === 'cardio') cardioWorkoutIds.add(r.workout_id);
-      });
-    }
-
-    setAllWorkouts((data || []).map((w) => ({ ...w, hasCardio: cardioWorkoutIds.has(w.id) })));
+    setAllWorkouts(data || []);
   }, [session]);
 
   useFocusEffect(
@@ -72,78 +90,157 @@ export default function WorkoutsScreen({ navigation }) {
     }, [loadWorkouts])
   );
 
-  const filteredWorkouts = allWorkouts.filter((w) => (tab === 'aerobico' ? w.hasCardio : true));
-  const sections = groupByDay(filteredWorkouts);
+  // Agrupa treinos em "blocos" por período (period_start/period_end igual = mesmo bloco).
+  // Treinos sem período definido (a maioria, no dia a dia) entram todos juntos
+  // num único bloco "atual" — é o plano corrente do aluno, dividido por dia.
+  const blocks = (() => {
+    const map = {};
+    allWorkouts.forEach((w) => {
+      const key = w.period_start ? `${w.period_start}__${w.period_end}` : 'sem_periodo';
+      if (!map[key]) {
+        map[key] = {
+          key,
+          goal: w.goal,
+          level: w.level,
+          period_start: w.period_start,
+          period_end: w.period_end,
+          created_at: w.created_at,
+          workouts: [],
+          isActive: false,
+        };
+      }
+      // Usa o goal/level/created_at mais recente do grupo pra representar o bloco
+      if (new Date(w.created_at) > new Date(map[key].created_at)) {
+        map[key].goal = w.goal || map[key].goal;
+        map[key].level = w.level || map[key].level;
+        map[key].created_at = w.created_at;
+      }
+      map[key].workouts.push(w);
+    });
+
+    const now = new Date();
+    return Object.values(map).map((b) => {
+      const end = b.period_end ? new Date(b.period_end) : null;
+      b.isActive = !end || end >= now;
+      return b;
+    }).sort((a, b) => (b.isActive ? 1 : 0) - (a.isActive ? 1 : 0)
+      || new Date(b.created_at) - new Date(a.created_at));
+  })();
+
+  const visibleBlocks = blocks.filter((b) => (tab === 'ativos' ? b.isActive : !b.isActive));
+
+  const openBlock = (block) => {
+    navigation.navigate('BlockDays', {
+      block: {
+        workouts: block.workouts,
+        goal: block.goal,
+        level: block.level,
+        periodStart: block.period_start,
+        periodEnd: block.period_end,
+      },
+    });
+  };
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Meus Treinos</Text>
+      {/* ── Topbar ── */}
+      <View style={styles.topbar}>
+        <View>
+          <Text style={styles.eyebrow}>TREINOS</Text>
+          <Text style={styles.title}>Meus Treinos</Text>
+        </View>
       </View>
 
+      {/* ── Tabs ── */}
       <View style={styles.tabsRow}>
-        <TouchableOpacity style={[styles.tabButton, tab === 'rotinas' && styles.tabButtonActive]} onPress={() => setTab('rotinas')}>
-          <Text style={[styles.tabButtonText, tab === 'rotinas' && styles.tabButtonTextActive]}>Rotinas de Treinos</Text>
+        <TouchableOpacity
+          style={[styles.tabButton, tab === 'ativos' && styles.tabButtonActive]}
+          onPress={() => setTab('ativos')}
+        >
+          <Text style={[styles.tabText, tab === 'ativos' && styles.tabTextActive]}>Ativos</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.tabButton, tab === 'aerobico' && styles.tabButtonActive]} onPress={() => setTab('aerobico')}>
-          <Text style={[styles.tabButtonText, tab === 'aerobico' && styles.tabButtonTextActive]}>Aeróbico</Text>
+        <TouchableOpacity
+          style={[styles.tabButton, tab === 'finalizados' && styles.tabButtonActive]}
+          onPress={() => setTab('finalizados')}
+        >
+          <Text style={[styles.tabText, tab === 'finalizados' && styles.tabTextActive]}>Finalizados</Text>
         </TouchableOpacity>
       </View>
 
+      {/* ── Banner de sincronização ── */}
       {pendingCount > 0 && (
         <View style={styles.syncBanner}>
           <Feather name="upload-cloud" size={14} color={colors.accent} />
           <Text style={styles.syncBannerText}>
-            {pendingCount} treino{pendingCount > 1 ? 's' : ''} salvo{pendingCount > 1 ? 's' : ''} no aparelho,
-            aguardando internet pra enviar
+            {pendingCount} treino{pendingCount > 1 ? 's' : ''} salvo{pendingCount > 1 ? 's' : ''} no
+            aparelho, aguardando internet pra enviar
           </Text>
         </View>
       )}
 
-      <SectionList
-        sections={sections}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 40 }}
-        ListEmptyComponent={
+      {/* ── Conteúdo ── */}
+      <ScrollView contentContainerStyle={styles.blocksList} showsVerticalScrollIndicator={false}>
+        {visibleBlocks.length === 0 ? (
           <Text style={styles.empty}>
-            {tab === 'aerobico'
-              ? 'Nenhum treino com cardio cadastrado ainda.'
+            {tab === 'finalizados'
+              ? 'Nenhum treino finalizado ainda.'
               : 'Nenhum treino criado ainda. Peça pro seu personal montar seu primeiro plano.'}
           </Text>
-        }
-        renderSectionHeader={({ section }) => <Text style={styles.sectionHeader}>{section.title}</Text>}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.card}
-            activeOpacity={0.8}
-            onPress={() =>
-              navigation.navigate('WorkoutDetail', {
-                workoutId: item.id,
-                workoutName: item.name,
-                dayOfWeek: item.day_of_week,
-              })
-            }
-          >
-            <View style={styles.cardIcon}>
-              <Feather name={item.hasCardio ? 'heart' : 'zap'} size={17} color={colors.accent} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.cardTitle}>{item.name}</Text>
-              {(item.goal || item.level) && (
-                <Text style={styles.cardMeta}>{[item.goal, item.level].filter(Boolean).join(' · ')}</Text>
-              )}
-            </View>
-            <Feather name="chevron-right" size={18} color={colors.textDim2} />
-          </TouchableOpacity>
+        ) : (
+          visibleBlocks.map((block) => (
+            <BlockCard key={block.key} block={block} onPress={() => openBlock(block)} />
+          ))
         )}
-      />
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 20, paddingTop: 60 },
-  header: { marginBottom: 16 },
+  container: { flex: 1, backgroundColor: colors.bg, paddingTop: 56 },
+
+  // ── Topbar
+  topbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingBottom: 4,
+  },
+  eyebrow: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: colors.textDim2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  title: { fontSize: 22, fontWeight: '800', color: colors.text },
+
+  // ── Tabs
+  tabsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginHorizontal: 18,
+    marginTop: 16,
+    marginBottom: 4,
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: colors.line ?? colors.border,
+  },
+  tabButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  tabButtonActive: { backgroundColor: colors.accent },
+  tabText: { color: colors.textDim, fontSize: 13, fontWeight: '700' },
+  tabTextActive: { color: '#08110A' },
+
+  // ── Sync banner
   syncBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -151,52 +248,78 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    marginBottom: 14,
+    marginHorizontal: 18,
+    marginTop: 14,
   },
   syncBannerText: { color: colors.accent, fontSize: 12, marginLeft: 8, flex: 1, lineHeight: 16 },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text },
-  empty: { color: colors.textDim, textAlign: 'center', marginTop: 40, fontSize: 14, lineHeight: 20 },
-  sectionHeader: {
-    color: colors.textDim2,
-    fontSize: 11.5,
-    fontWeight: '700',
-    letterSpacing: 0.9,
-    textTransform: 'uppercase',
-    marginTop: 18,
-    marginBottom: 10,
+
+  empty: {
+    color: colors.textDim,
+    textAlign: 'center',
+    marginTop: 40,
+    fontSize: 14,
+    lineHeight: 20,
+    paddingHorizontal: 4,
   },
-  card: {
+
+  // ── Blocks list
+  blocksList: {
+    paddingHorizontal: 18,
+    paddingTop: 20,
+    paddingBottom: 40,
+  },
+  blockCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.line ?? colors.border,
+    borderRadius: radius.lg,
+    padding: 16,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  blockCardContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 13,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md + 1,
-    padding: 14,
-    marginBottom: 10,
+    gap: 12,
   },
-  cardIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+  blockIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
     backgroundColor: colors.accentGlow,
-    alignItems: 'center',
     justifyContent: 'center',
-  },
-  cardTitle: { color: colors.text, fontSize: 14.5, fontWeight: '700' },
-  cardMeta: { color: colors.textDim, fontSize: 11.5, marginTop: 2, textTransform: 'capitalize' },
-  tabsRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
-  tabButton: {
-    flex: 1,
     alignItems: 'center',
-    paddingVertical: 10,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    flexShrink: 0,
   },
-  tabButtonActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  tabButtonText: { color: colors.textDim, fontSize: 12.5, fontWeight: '700' },
-  tabButtonTextActive: { color: '#04170F' },
+  blockInfo: { flex: 1 },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 100,
+    alignSelf: 'flex-start',
+    marginBottom: 6,
+  },
+  statusPillAndamento: { backgroundColor: colors.amberGlow ?? 'rgba(253,180,78,0.14)' },
+  statusPillConcluido: { backgroundColor: 'rgba(138,151,166,0.14)' },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 10, fontWeight: '700' },
+  blockTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  blockMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.line ?? colors.border,
+  },
+  blockMetaText: { fontSize: 11.5, color: colors.textDim },
+  metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: colors.textDim2 },
 });

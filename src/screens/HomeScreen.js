@@ -7,7 +7,9 @@ import Avatar from '../components/Avatar';
 import { colors, radius } from '../theme/theme';
 import { Feather } from '@expo/vector-icons';
 
-function getDayStatus(dayIndex, isDone) {
+// dayStatus agora aceita: isDone (bool), isSkipped (bool)
+// Retorna: 'done' | 'skipped' | 'today' | 'upcoming' | 'missed' | 'extra'
+function getDayStatus(dayIndex, isDone, isSkipped) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const startOfWeek = new Date(today);
@@ -15,6 +17,7 @@ function getDayStatus(dayIndex, isDone) {
   const dayDate = new Date(startOfWeek);
   dayDate.setDate(startOfWeek.getDate() + dayIndex);
 
+  if (isSkipped) return 'skipped';
   if (dayIndex === 0) return isDone ? 'done' : 'extra'; // domingo = dia extra
   if (isDone) return 'done';
   if (dayDate.getTime() === today.getTime()) return 'today';
@@ -31,7 +34,11 @@ export default function HomeScreen({ navigation }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [streak, setStreak] = useState(0);
   const [totalWorkouts, setTotalWorkouts] = useState(0);
-  const [weekDays, setWeekDays] = useState([false, false, false, false, false, false, false]); // dom..sáb
+  // Cada posição: { done: bool, skipped: bool }
+  const [weekDays, setWeekDays] = useState([
+    {done:false,skipped:false},{done:false,skipped:false},{done:false,skipped:false},
+    {done:false,skipped:false},{done:false,skipped:false},{done:false,skipped:false},{done:false,skipped:false}
+  ]);
   const [hasParq, setHasParq] = useState(true); // true por padrão pra não piscar o aviso à toa
   const [financeStatus, setFinanceStatus] = useState(null); // { emDia, bloqueado }
 
@@ -83,10 +90,22 @@ export default function HomeScreen({ navigation }) {
     const startOfWeek = new Date();
     startOfWeek.setHours(0, 0, 0, 0);
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-    const days = [false, false, false, false, false, false, false];
+    const days = Array.from({length:7},()=>({done:false,skipped:false}));
     (allDone || []).forEach((log) => {
       const d = new Date(log.started_at);
-      if (d >= startOfWeek) days[d.getDay()] = true;
+      if (d >= startOfWeek) days[d.getDay()].done = true;
+    });
+    // Buscar também os dias em que o aluno marcou "não vou treinar" (skipped)
+    const { data: skippedLogs } = await supabase
+      .from('workout_logs')
+      .select('started_at')
+      .eq('user_id', userId)
+      .gte('started_at', startOfWeek.toISOString())
+      .eq('skipped', true);
+    (skippedLogs || []).forEach((log) => {
+      const d = new Date(log.started_at);
+      const dayIdx = d.getDay();
+      if (!days[dayIdx].done) days[dayIdx].skipped = true;
     });
     setWeekDays(days);
 
@@ -194,22 +213,28 @@ export default function HomeScreen({ navigation }) {
 
               <View style={styles.weekTrack}>
                 {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((label, i) => {
-                  const status = getDayStatus(i, weekDays[i]);
+                  const dayInfo = weekDays[i] || {done:false,skipped:false};
+                  const status = getDayStatus(i, dayInfo.done, dayInfo.skipped);
                   const isDone = status === 'done';
+                  const isSkipped = status === 'skipped';
                   const isToday = status === 'today';
+                  const dotStyle = isDone
+                    ? styles.weekDotDone
+                    : isSkipped
+                    ? styles.weekDotSkipped
+                    : isToday
+                    ? styles.weekDotToday
+                    : status === 'extra'
+                    ? styles.weekDotExtra
+                    : null;
                   return (
                     <View key={i} style={styles.weekDay}>
-                      <View
-                        style={[
-                          styles.weekDot,
-                          isDone && styles.weekDotDone,
-                          isToday && styles.weekDotToday,
-                          status === 'extra' && styles.weekDotExtra,
-                        ]}
-                      >
+                      <View style={[styles.weekDot, dotStyle]}>
                         {isDone && <Feather name="check" size={12} color="#08120C" />}
+                        {isSkipped && <Text style={{fontSize:10}}>❌</Text>}
+                        {!isDone && !isSkipped && isToday && <View style={styles.weekDotInnerToday} />}
                       </View>
-                      <Text style={[styles.weekDayLabel, isDone && styles.weekDayLabelDone]}>{label}</Text>
+                      <Text style={[styles.weekDayLabel, isDone && styles.weekDayLabelDone, isSkipped && styles.weekDayLabelSkipped]}>{label}</Text>
                     </View>
                   );
                 })}
@@ -296,7 +321,7 @@ export default function HomeScreen({ navigation }) {
           <Text style={styles.empty}>Você ainda não registrou nenhum treino. Vá até a aba "Treinos" para começar!</Text>
         }
         renderItem={({ item }) => {
-          const status = item.skipped ? 'blocked' : item.finished_at ? 'done' : 'pending';
+          const status = item.skipped ? 'skipped' : item.finished_at ? 'done' : 'pending';
           return (
             <View style={styles.workoutItem}>
               <View style={styles.workoutIcon}>
@@ -316,17 +341,17 @@ export default function HomeScreen({ navigation }) {
                 style={[
                   styles.statusPill,
                   status === 'done' && styles.statusPillDone,
-                  status === 'blocked' && styles.statusPillBlocked,
+                  status === 'skipped' && styles.statusPillSkipped,
                 ]}
               >
                 <Text
                   style={[
                     styles.statusPillText,
                     status === 'done' && styles.statusPillTextDone,
-                    status === 'blocked' && styles.statusPillTextBlocked,
+                    status === 'skipped' && styles.statusPillTextSkipped,
                   ]}
                 >
-                  {status === 'done' ? 'Concluído' : status === 'pending' ? 'Em andamento' : 'Não treinou'}
+                  {status === 'done' ? '✅ Concluído' : status === 'pending' ? 'Em andamento' : '❌ Não treinou'}
                 </Text>
               </View>
             </View>
@@ -404,8 +429,11 @@ const styles = StyleSheet.create({
   weekDotDone: { backgroundColor: colors.accent, borderColor: colors.accent },
   weekDotToday: { borderColor: colors.accent, borderWidth: 1.5 },
   weekDotExtra: { borderColor: colors.amber },
+  weekDotSkipped: { backgroundColor: 'rgba(255,100,180,0.15)', borderColor: '#FF64B4' },
+  weekDotInnerToday: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accent },
   weekDayLabel: { color: colors.textDim2, fontSize: 9.5, fontWeight: '600' },
   weekDayLabelDone: { color: colors.accent },
+  weekDayLabelSkipped: { color: '#FF64B4' },
 
   // Notices
   notices: { marginTop: 14, gap: 10 },
@@ -515,8 +543,10 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(253,180,78,.3)',
   },
   statusPillDone: { backgroundColor: colors.accentGlow, borderColor: 'rgba(51,226,139,.3)' },
+  statusPillSkipped: { backgroundColor: 'rgba(255,100,180,0.15)', borderColor: 'rgba(255,100,180,0.35)' },
   statusPillBlocked: { backgroundColor: colors.redGlow, borderColor: 'rgba(251,100,103,.3)' },
   statusPillText: { fontSize: 10, fontWeight: '700', color: colors.amber },
   statusPillTextDone: { color: colors.accent },
   statusPillTextBlocked: { color: colors.red },
+  statusPillTextSkipped: { color: '#FF64B4', fontWeight: '700' },
 });

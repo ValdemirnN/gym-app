@@ -21,16 +21,100 @@ import { useAuth } from '../context/AuthContext';
 import { colors, radius } from '../theme/theme';
 
 const DAYS = [
-  { key: 'segunda', label: 'Seg' },
-  { key: 'terca', label: 'Ter' },
-  { key: 'quarta', label: 'Qua' },
-  { key: 'quinta', label: 'Qui' },
-  { key: 'sexta', label: 'Sex' },
-  { key: 'sabado', label: 'Sáb' },
-  { key: 'domingo', label: 'Dom' },
+  { key: 'segunda', label: 'S' },
+  { key: 'terca', label: 'T' },
+  { key: 'quarta', label: 'Q' },
+  { key: 'quinta', label: 'Q' },
+  { key: 'sexta', label: 'S' },
+  { key: 'sabado', label: 'S' },
+  { key: 'domingo', label: 'D' },
+];
+const DAY_FULL_LABEL = {
+  segunda: 'Segunda',
+  terca: 'Terça',
+  quarta: 'Quarta',
+  quinta: 'Quinta',
+  sexta: 'Sexta',
+  sabado: 'Sábado',
+  domingo: 'Domingo',
+};
+
+const GOALS = ['Hipertrofia', 'Emagrecimento', 'Condicionamento', 'Força'];
+
+const LEVELS = [
+  { key: 'iniciante', label: 'Iniciante', dots: 1 },
+  { key: 'intermediario', label: 'Intermed.', dots: 2 },
+  { key: 'avancado', label: 'Avançado', dots: 3 },
 ];
 
+const INTENSITIES = [
+  { key: 'leve', label: 'Leve' },
+  { key: 'moderada', label: 'Moderada' },
+  { key: 'intensa', label: 'Intensa' },
+];
+
+const STEPS = ['Info', 'Exercícios', 'Aeróbico', 'Revisão'];
+
+// Paleta usada para colorir grupos musculares dinamicamente (a base não tem
+// uma lista fixa de grupos, então geramos uma cor estável por nome).
+const GROUP_COLORS = [
+  colors.accent,
+  colors.blue,
+  '#B388FF',
+  colors.amber,
+  '#FF6BAE',
+  '#54E6B0',
+  '#4FD8E8',
+  colors.red,
+];
+const CARDIO_COLOR = '#FF5A7A';
+
+function colorForGroup(group) {
+  const key = (group || 'Outros').trim();
+  if (!key) return colors.textDim2;
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = key.charCodeAt(i) + ((hash << 5) - hash);
+  return GROUP_COLORS[Math.abs(hash) % GROUP_COLORS.length];
+}
+
+const isForce = (item) => (item.exercise_type || 'forca') !== 'cardio';
+
 const DONE_ACCESSORY_ID = 'doneAccessoryCreateWorkout';
+
+// ---------- Pequenos componentes reutilizáveis ----------
+
+function DayPill({ label, active, onPress }) {
+  return (
+    <TouchableOpacity style={[styles.dayPill, active && styles.dayPillActive]} onPress={onPress} activeOpacity={0.8}>
+      <Text style={[styles.dayPillText, active && styles.dayPillTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function Chip({ label, active, onPress, style }) {
+  return (
+    <TouchableOpacity style={[styles.chip, active && styles.chipActive, style]} onPress={onPress} activeOpacity={0.8}>
+      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function Stepper({ value, suffix, onDecrease, onIncrease, tint }) {
+  return (
+    <View style={[styles.stepper, tint && { backgroundColor: 'rgba(255,90,122,0.12)' }]}>
+      <TouchableOpacity style={styles.stepperBtn} onPress={onDecrease} activeOpacity={0.7}>
+        <Text style={[styles.stepperBtnText, tint && { color: CARDIO_COLOR }]}>−</Text>
+      </TouchableOpacity>
+      <Text style={styles.stepperVal}>
+        {value}
+        {suffix || ''}
+      </Text>
+      <TouchableOpacity style={styles.stepperBtn} onPress={onIncrease} activeOpacity={0.7}>
+        <Text style={[styles.stepperBtnText, tint && { color: CARDIO_COLOR }]}>+</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 export default function CreateWorkoutScreen({ route, navigation }) {
   const { session } = useAuth();
@@ -38,29 +122,43 @@ export default function CreateWorkoutScreen({ route, navigation }) {
   const { workoutId, workoutName: initialWorkoutName } = params;
   const isEditing = !!workoutId;
 
+  const [step, setStep] = useState(0);
+
   const [name, setName] = useState(initialWorkoutName || '');
   const [dayOfWeek, setDayOfWeek] = useState(null);
+  const [goal, setGoal] = useState(null);
+  const [level, setLevel] = useState(null);
+  const [periodStart, setPeriodStart] = useState('');
+  const [periodEnd, setPeriodEnd] = useState('');
+
   const [exercises, setExercises] = useState([]);
-  const [selected, setSelected] = useState([]); // [{exercise_id, target_sets, target_reps}]
+  const [selected, setSelected] = useState([]);
   const [saving, setSaving] = useState(false);
   const [loadingWorkout, setLoadingWorkout] = useState(isEditing);
   const [search, setSearch] = useState('');
+  const [openGroups, setOpenGroups] = useState({});
 
   const [newExerciseName, setNewExerciseName] = useState('');
   const [newExerciseGroup, setNewExerciseGroup] = useState('');
+  const [newExerciseType, setNewExerciseType] = useState('forca');
   const [addingExercise, setAddingExercise] = useState(false);
 
   const [videos, setVideos] = useState([]);
   const [videoSearch, setVideoSearch] = useState('');
-  const [selectedVideo, setSelectedVideo] = useState(null); // { id, name } - pro exercício novo
+  const [selectedVideo, setSelectedVideo] = useState(null);
 
-  const [attachTarget, setAttachTarget] = useState(null); // { exerciseId, name } - pro exercício já selecionado
+  const [attachTarget, setAttachTarget] = useState(null); // vídeo pro exercício já selecionado
   const [attachSearch, setAttachSearch] = useState('');
+
+  const [comboTarget, setComboTarget] = useState(null); // exercício sendo vinculado a um combinado
 
   useFocusEffect(
     useCallback(() => {
       const loadExercises = async () => {
-        const { data } = await supabase.from('exercises').select('id, name, muscle_group, video_id').order('muscle_group');
+        const { data } = await supabase
+          .from('exercises')
+          .select('id, name, muscle_group, video_id, exercise_type')
+          .order('muscle_group');
         setExercises(data || []);
       };
       const loadVideos = async () => {
@@ -76,14 +174,24 @@ export default function CreateWorkoutScreen({ route, navigation }) {
   useEffect(() => {
     if (!isEditing) return;
     const loadWorkout = async () => {
-      const { data: workout } = await supabase.from('workouts').select('name, day_of_week').eq('id', workoutId).single();
+      const { data: workout } = await supabase
+        .from('workouts')
+        .select('name, day_of_week, goal, level, period_start, period_end')
+        .eq('id', workoutId)
+        .single();
       if (workout) {
         setName(workout.name);
         setDayOfWeek(workout.day_of_week);
+        setGoal(workout.goal || null);
+        setLevel(workout.level || null);
+        setPeriodStart(workout.period_start || '');
+        setPeriodEnd(workout.period_end || '');
       }
       const { data: items } = await supabase
         .from('workout_exercises')
-        .select('target_sets, target_reps, order_index, exercises(id, name)')
+        .select(
+          'target_sets, target_reps, order_index, combo_group, target_duration_minutes, target_distance_km, target_intensity, exercises(id, name, muscle_group, exercise_type)'
+        )
         .eq('workout_id', workoutId)
         .order('order_index');
       if (items) {
@@ -91,8 +199,14 @@ export default function CreateWorkoutScreen({ route, navigation }) {
           items.map((it) => ({
             exercise_id: it.exercises.id,
             name: it.exercises.name,
+            muscle_group: it.exercises.muscle_group,
+            exercise_type: it.exercises.exercise_type,
             target_sets: it.target_sets,
             target_reps: it.target_reps,
+            combo_group: it.combo_group,
+            target_duration_minutes: it.target_duration_minutes,
+            target_distance_km: it.target_distance_km,
+            target_intensity: it.target_intensity,
           }))
         );
       }
@@ -102,14 +216,27 @@ export default function CreateWorkoutScreen({ route, navigation }) {
   }, [isEditing, workoutId]);
 
   const getVideoId = (exerciseId) => exercises.find((e) => e.id === exerciseId)?.video_id || null;
+  const isSelected = (id) => selected.some((e) => e.exercise_id === id);
+  const selectedOf = (id) => selected.find((e) => e.exercise_id === id);
 
   const searchLower = search.trim().toLowerCase();
-  const filteredExercises = exercises.filter((item) => {
+  const forceExercises = exercises.filter((e) => isForce(e));
+  const cardioExercises = exercises.filter((e) => !isForce(e));
+
+  const filteredForceExercises = forceExercises.filter((item) => {
     if (!searchLower) return true;
     const nameMatch = (item.name || '').toLowerCase().includes(searchLower);
     const groupMatch = (item.muscle_group || '').toLowerCase().includes(searchLower);
     return nameMatch || groupMatch;
   });
+
+  const groupedExercises = filteredForceExercises.reduce((acc, item) => {
+    const g = item.muscle_group || 'Outros';
+    if (!acc[g]) acc[g] = [];
+    acc[g].push(item);
+    return acc;
+  }, {});
+  const groupNames = Object.keys(groupedExercises).sort((a, b) => a.localeCompare(b));
 
   const videoSearchLower = videoSearch.trim().toLowerCase();
   const filteredVideos = videoSearchLower
@@ -127,6 +254,7 @@ export default function CreateWorkoutScreen({ route, navigation }) {
       .insert({
         name: newExerciseName.trim(),
         muscle_group: newExerciseGroup.trim() || null,
+        exercise_type: newExerciseType,
         video_id: selectedVideo?.id || null,
         owner_id: session.user.id,
       })
@@ -143,6 +271,7 @@ export default function CreateWorkoutScreen({ route, navigation }) {
     toggleExercise(data);
     setNewExerciseName('');
     setNewExerciseGroup('');
+    setNewExerciseType('forca');
     setVideoSearch('');
     setSelectedVideo(null);
   };
@@ -153,16 +282,110 @@ export default function CreateWorkoutScreen({ route, navigation }) {
       if (exists) {
         return prev.filter((e) => e.exercise_id !== exercise.id);
       }
-      return [...prev, { exercise_id: exercise.id, name: exercise.name, target_sets: 3, target_reps: 12 }];
+      if (!isForce(exercise)) {
+        return [
+          ...prev,
+          {
+            exercise_id: exercise.id,
+            name: exercise.name,
+            muscle_group: exercise.muscle_group,
+            exercise_type: 'cardio',
+            target_duration_minutes: 15,
+            target_distance_km: null,
+            target_intensity: 'moderada',
+            target_sets: null,
+            target_reps: null,
+            combo_group: null,
+          },
+        ];
+      }
+      return [
+        ...prev,
+        {
+          exercise_id: exercise.id,
+          name: exercise.name,
+          muscle_group: exercise.muscle_group,
+          exercise_type: 'forca',
+          target_sets: 3,
+          target_reps: 12,
+          combo_group: null,
+          target_duration_minutes: null,
+          target_distance_km: null,
+          target_intensity: null,
+        },
+      ];
     });
   };
 
-  const updateTarget = (exerciseId, field, value) => {
+  const patchSelected = (exerciseId, patch) => {
+    setSelected((prev) => prev.map((e) => (e.exercise_id === exerciseId ? { ...e, ...patch } : e)));
+  };
+
+  const bumpSets = (exerciseId, delta) => {
     setSelected((prev) =>
-      prev.map((e) => (e.exercise_id === exerciseId ? { ...e, [field]: parseInt(value) || 0 } : e))
+      prev.map((e) =>
+        e.exercise_id === exerciseId ? { ...e, target_sets: Math.max(1, (e.target_sets || 1) + delta) } : e
+      )
+    );
+  };
+  const bumpReps = (exerciseId, delta) => {
+    setSelected((prev) =>
+      prev.map((e) =>
+        e.exercise_id === exerciseId ? { ...e, target_reps: Math.max(1, (e.target_reps || 1) + delta) } : e
+      )
+    );
+  };
+  const bumpDuration = (exerciseId, delta) => {
+    setSelected((prev) =>
+      prev.map((e) =>
+        e.exercise_id === exerciseId
+          ? { ...e, target_duration_minutes: Math.max(1, (e.target_duration_minutes || 1) + delta) }
+          : e
+      )
     );
   };
 
+  // ---------- Combinado / bi-set ----------
+  const linkCombo = (target, partner) => {
+    setSelected((prev) => {
+      let letter = target.combo_group || partner.combo_group;
+      if (!letter) {
+        const used = new Set(prev.map((s) => s.combo_group).filter(Boolean));
+        let candidate = 'A';
+        while (used.has(candidate)) candidate = String.fromCharCode(candidate.charCodeAt(0) + 1);
+        letter = candidate;
+      }
+      return prev.map((s) =>
+        s.exercise_id === target.exercise_id || s.exercise_id === partner.exercise_id
+          ? { ...s, combo_group: letter }
+          : s
+      );
+    });
+    setComboTarget(null);
+  };
+
+  const unlinkCombo = (target) => {
+    setSelected((prev) => {
+      const letter = target.combo_group;
+      let updated = prev.map((s) => (s.exercise_id === target.exercise_id ? { ...s, combo_group: null } : s));
+      if (letter) {
+        const remaining = updated.filter((s) => s.combo_group === letter);
+        if (remaining.length === 1) {
+          updated = updated.map((s) => (s.combo_group === letter ? { ...s, combo_group: null } : s));
+        }
+      }
+      return updated;
+    });
+    setComboTarget(null);
+  };
+
+  const comboPartnerName = (item) => {
+    if (!item.combo_group) return null;
+    const partner = selected.find((s) => s.combo_group === item.combo_group && s.exercise_id !== item.exercise_id);
+    return partner?.name || null;
+  };
+
+  // ---------- Vídeo de demonstração ----------
   const attachVideoToSelected = async (video) => {
     const { error } = await supabase.from('exercises').update({ video_id: video.id }).eq('id', attachTarget.exerciseId);
     if (error) {
@@ -179,22 +402,44 @@ export default function CreateWorkoutScreen({ route, navigation }) {
     ? videos.filter((v) => (v.name || '').toLowerCase().includes(attachSearchLower))
     : videos;
 
+  // ---------- Estatísticas (usadas no header e na revisão) ----------
+  const forceSelected = selected.filter(isForce);
+  const cardioSelected = selected.filter((s) => !isForce(s));
+  const totalCount = selected.length;
+  const groupsUsed = [...new Set(forceSelected.map((e) => e.muscle_group || 'Outros'))];
+  const totalGroupsAvailable = [...new Set(forceExercises.map((e) => e.muscle_group || 'Outros'))].length || 1;
+  const estimatedMinutes = Math.round(
+    forceSelected.reduce((acc, e) => acc + (e.target_sets || 0) * 1.4, forceSelected.length ? 6 : 0) +
+      cardioSelected.reduce((acc, e) => acc + (e.target_duration_minutes || 0), 0)
+  );
+
   const handleSave = async () => {
     if (!name) {
       Alert.alert('Atenção', 'Dê um nome ao seu treino (ex: Treino A).');
+      setStep(0);
       return;
     }
     if (selected.length === 0) {
       Alert.alert('Atenção', 'Selecione pelo menos um exercício.');
+      setStep(1);
       return;
     }
     setSaving(true);
+
+    const workoutPayload = {
+      name,
+      day_of_week: dayOfWeek,
+      goal,
+      level,
+      period_start: periodStart || null,
+      period_end: periodEnd || null,
+    };
 
     let workout;
     if (isEditing) {
       const { data, error } = await supabase
         .from('workouts')
-        .update({ name, day_of_week: dayOfWeek })
+        .update(workoutPayload)
         .eq('id', workoutId)
         .select()
         .single();
@@ -208,7 +453,7 @@ export default function CreateWorkoutScreen({ route, navigation }) {
     } else {
       const { data, error } = await supabase
         .from('workouts')
-        .insert({ user_id: session.user.id, name, day_of_week: dayOfWeek })
+        .insert({ user_id: session.user.id, ...workoutPayload })
         .select()
         .single();
       if (error) {
@@ -222,9 +467,13 @@ export default function CreateWorkoutScreen({ route, navigation }) {
     const rows = selected.map((e, index) => ({
       workout_id: workout.id,
       exercise_id: e.exercise_id,
-      target_sets: e.target_sets,
-      target_reps: e.target_reps,
       order_index: index,
+      combo_group: isForce(e) ? e.combo_group : null,
+      target_sets: isForce(e) ? e.target_sets : null,
+      target_reps: isForce(e) ? e.target_reps : null,
+      target_duration_minutes: !isForce(e) ? e.target_duration_minutes : null,
+      target_distance_km: !isForce(e) ? e.target_distance_km : null,
+      target_intensity: !isForce(e) ? e.target_intensity : null,
     }));
 
     const { error: insertError } = await supabase.from('workout_exercises').insert(rows);
@@ -238,8 +487,6 @@ export default function CreateWorkoutScreen({ route, navigation }) {
     navigation.goBack();
   };
 
-  const isSelected = (id) => selected.some((e) => e.exercise_id === id);
-
   if (loadingWorkout) {
     return (
       <View style={styles.container}>
@@ -248,184 +495,523 @@ export default function CreateWorkoutScreen({ route, navigation }) {
     );
   }
 
+  const subtitleParts = [];
+  if (dayOfWeek) subtitleParts.push(DAY_FULL_LABEL[dayOfWeek]);
+  if (goal) subtitleParts.push(goal);
+  if (level) subtitleParts.push(LEVELS.find((l) => l.key === level)?.label);
+
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <TouchableOpacity style={styles.backRow} onPress={() => navigation.goBack()}>
-        <Feather name="chevron-left" size={20} color={colors.text} />
-        <Text style={styles.back}>Voltar</Text>
-      </TouchableOpacity>
-
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
-        <Text style={styles.title}>{isEditing ? 'Editar Treino' : 'Novo Treino'}</Text>
-
-        <TextInput
-          style={styles.input}
-          placeholder="Nome do treino (ex: Treino A - Peito)"
-          placeholderTextColor={colors.textDim2}
-          value={name}
-          onChangeText={setName}
-        />
-
-        <Text style={styles.sectionLabel}>Dia da semana (opcional):</Text>
-        <View style={styles.dayRow}>
-          {DAYS.map((d) => (
-            <TouchableOpacity
-              key={d.key}
-              style={[styles.dayChip, dayOfWeek === d.key && styles.dayChipSelected]}
-              onPress={() => setDayOfWeek(dayOfWeek === d.key ? null : d.key)}
-            >
-              <Text style={[styles.dayChipText, dayOfWeek === d.key && styles.dayChipTextSelected]}>{d.label}</Text>
-            </TouchableOpacity>
-          ))}
+      {/* Header */}
+      <View style={styles.topbar}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.8}>
+          <Feather name="chevron-left" size={18} color={colors.text} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.eyebrow}>{isEditing ? 'Editando treino' : 'Novo treino'}</Text>
+          <Text style={styles.topTitle} numberOfLines={1}>
+            {name || 'Sem nome'}
+          </Text>
         </View>
+        <View style={styles.ringBadge}>
+          <Text style={styles.ringBadgeNum}>{groupsUsed.length}</Text>
+          <Text style={styles.ringBadgeLabel}>/{totalGroupsAvailable} grupos</Text>
+        </View>
+      </View>
 
-        {selected.length > 0 && (
-          <View style={{ marginBottom: 16 }}>
-            <Text style={styles.sectionLabel}>Vídeos dos exercícios selecionados:</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {selected.map((s) => {
-                const hasVideo = !!getVideoId(s.exercise_id);
-                return (
-                  <TouchableOpacity
-                    key={s.exercise_id}
-                    style={[styles.videoChip, hasVideo && styles.videoChipDone]}
-                    onPress={() => setAttachTarget({ exerciseId: s.exercise_id, name: s.name })}
-                  >
-                    <Feather name={hasVideo ? 'film' : 'plus'} size={12} color={hasVideo ? colors.accent : colors.textDim} />
-                    <Text style={[styles.videoChipText, hasVideo && styles.videoChipTextDone]}> {s.name}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+      {/* Abas de etapa */}
+      <View style={styles.steps}>
+        {STEPS.map((s, i) => (
+          <TouchableOpacity
+            key={s}
+            style={[styles.stepBtn, step === i && styles.stepBtnActive]}
+            onPress={() => setStep(i)}
+            activeOpacity={0.85}
+          >
+            <View style={[styles.stepNum, step === i && styles.stepNumActive]}>
+              <Text style={[styles.stepNumText, step === i && styles.stepNumTextActive]}>{i + 1}</Text>
+            </View>
+            <Text style={[styles.stepBtnText, step === i && styles.stepBtnTextActive]}>{s}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 18, paddingBottom: 120 }}>
+        {/* PASSO 1: INFO */}
+        {step === 0 && (
+          <View>
+            <Text style={styles.fieldLabel}>Nome do treino</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ex: Treino A - Peito e Tríceps"
+              placeholderTextColor={colors.textDim2}
+              value={name}
+              onChangeText={setName}
+            />
+
+            <Text style={styles.fieldLabel}>
+              Dia da semana <Text style={styles.hint}>opcional</Text>
+            </Text>
+            <View style={styles.pillRow}>
+              {DAYS.map((d) => (
+                <DayPill
+                  key={d.key}
+                  label={d.label}
+                  active={dayOfWeek === d.key}
+                  onPress={() => setDayOfWeek(dayOfWeek === d.key ? null : d.key)}
+                />
+              ))}
+            </View>
+
+            <Text style={styles.fieldLabel}>
+              Objetivo <Text style={styles.hint}>opcional</Text>
+            </Text>
+            <View style={styles.pillRow}>
+              {GOALS.map((g) => (
+                <Chip key={g} label={g} active={goal === g} onPress={() => setGoal(goal === g ? null : g)} />
+              ))}
+            </View>
+
+            <Text style={styles.fieldLabel}>
+              Nível <Text style={styles.hint}>opcional</Text>
+            </Text>
+            <View style={styles.levelTrack}>
+              {LEVELS.map((l) => (
+                <Chip
+                  key={l.key}
+                  label={l.label}
+                  active={level === l.key}
+                  onPress={() => setLevel(level === l.key ? null : l.key)}
+                  style={{ flex: 1 }}
+                />
+              ))}
+            </View>
+
+            <Text style={styles.fieldLabel}>
+              Período do bloco <Text style={styles.hint}>opcional</Text>
+            </Text>
+            <View style={styles.dateRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dateLabel}>Início</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="AAAA-MM-DD"
+                  placeholderTextColor={colors.textDim2}
+                  value={periodStart}
+                  onChangeText={setPeriodStart}
+                  inputAccessoryViewID={Platform.OS === 'ios' ? DONE_ACCESSORY_ID : undefined}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dateLabel}>Fim</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="AAAA-MM-DD"
+                  placeholderTextColor={colors.textDim2}
+                  value={periodEnd}
+                  onChangeText={setPeriodEnd}
+                  inputAccessoryViewID={Platform.OS === 'ios' ? DONE_ACCESSORY_ID : undefined}
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.nextBtn} onPress={() => setStep(1)} activeOpacity={0.85}>
+              <Text style={styles.nextBtnText}>Escolher exercícios</Text>
+              <Feather name="chevron-right" size={16} color="#04170F" />
+            </TouchableOpacity>
           </View>
         )}
 
-        <Text style={styles.sectionLabel}>Selecione os exercícios:</Text>
+        {/* PASSO 2: EXERCÍCIOS */}
+        {step === 1 && (
+          <View>
+            {selected.length > 0 && (
+              <View style={{ marginBottom: 16 }}>
+                <Text style={styles.sectionLabel}>Vídeos dos exercícios selecionados:</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {selected.map((s) => {
+                    const hasVideo = !!getVideoId(s.exercise_id);
+                    return (
+                      <TouchableOpacity
+                        key={s.exercise_id}
+                        style={[styles.videoChip, hasVideo && styles.videoChipDone]}
+                        onPress={() => setAttachTarget({ exerciseId: s.exercise_id, name: s.name })}
+                      >
+                        <Feather name={hasVideo ? 'film' : 'plus'} size={12} color={hasVideo ? colors.accent : colors.textDim} />
+                        <Text style={[styles.videoChipText, hasVideo && styles.videoChipTextDone]}> {s.name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
 
-        <TextInput
-          style={styles.input}
-          placeholder="Buscar por nome ou grupo (ex: Peito)"
-          placeholderTextColor={colors.textDim2}
-          value={search}
-          onChangeText={setSearch}
-        />
-
-        <View style={styles.customBox}>
-          <Text style={styles.sectionLabel}>Não achou? Adicione um exercício novo:</Text>
-          <View style={{ flexDirection: 'row' }}>
-            <TextInput
-              style={[styles.smallFlexInput, { marginRight: 8 }]}
-              placeholder="Nome do exercício"
-              placeholderTextColor={colors.textDim2}
-              value={newExerciseName}
-              onChangeText={setNewExerciseName}
-            />
-            <TextInput
-              style={styles.smallFlexInput}
-              placeholder="Grupo (opcional)"
-              placeholderTextColor={colors.textDim2}
-              value={newExerciseGroup}
-              onChangeText={setNewExerciseGroup}
-            />
-          </View>
-
-          <Text style={[styles.sectionLabel, { marginTop: 12 }]}>Vídeo de demonstração (opcional):</Text>
-          {selectedVideo ? (
-            <View style={styles.videoSelectedRow}>
-              <Feather name="film" size={13} color={colors.accent} />
-              <Text style={styles.videoSelectedText}> {selectedVideo.name}</Text>
-              <TouchableOpacity onPress={() => setSelectedVideo(null)}>
-                <Text style={styles.videoRemove}>trocar</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <>
+            <View style={styles.searchBox}>
+              <Feather name="search" size={15} color={colors.textDim2} />
               <TextInput
-                style={styles.input}
-                placeholder="Buscar vídeo já enviado, pelo nome"
+                style={styles.searchInput}
+                placeholder="Buscar por nome ou grupo (ex: Peito)"
                 placeholderTextColor={colors.textDim2}
-                value={videoSearch}
-                onChangeText={setVideoSearch}
+                value={search}
+                onChangeText={setSearch}
               />
-              {filteredVideos.length > 0 && (
-                <View style={styles.videoResultsBox}>
-                  {filteredVideos.map((v) => (
-                    <TouchableOpacity
-                      key={v.id}
-                      style={styles.videoResultRow}
-                      onPress={() => {
-                        setSelectedVideo(v);
-                        setVideoSearch('');
-                      }}
-                    >
-                      <Feather name="film" size={13} color={colors.accent} />
-                      <Text style={styles.videoResultText}> {v.name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-              <TouchableOpacity
-                onPress={() =>
-                  navigation.navigate('UploadVideo', {
-                    exerciseName: newExerciseName.trim() || undefined,
-                  })
-                }
-              >
-                <Text style={styles.uploadLink}>+ Enviar vídeo novo</Text>
-              </TouchableOpacity>
-            </>
-          )}
-
-          <TouchableOpacity
-            style={[styles.addButton, { marginTop: 12 }]}
-            onPress={handleAddCustomExercise}
-            disabled={addingExercise}
-          >
-            <Text style={styles.addButtonText}>{addingExercise ? '...' : 'Adicionar exercício'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {filteredExercises.map((item) => {
-          const selectedItem = selected.find((e) => e.exercise_id === item.id);
-          return (
-            <View key={item.id} style={styles.exerciseRow}>
-              <TouchableOpacity style={styles.exerciseInfo} onPress={() => toggleExercise(item)}>
-                <View style={[styles.checkbox, isSelected(item.id) && styles.checkboxChecked]}>
-                  {isSelected(item.id) && <Feather name="check" size={13} color="#04170F" />}
-                </View>
-                <View>
-                  <Text style={styles.exerciseName}>{item.name}</Text>
-                  <Text style={styles.exerciseGroup}>{item.muscle_group}</Text>
-                </View>
-              </TouchableOpacity>
-
-              {selectedItem && (
-                <View style={styles.targetInputs}>
-                  <TextInput
-                    style={styles.smallInput}
-                    keyboardType="number-pad"
-                    inputAccessoryViewID={Platform.OS === 'ios' ? DONE_ACCESSORY_ID : undefined}
-                    value={String(selectedItem.target_sets)}
-                    onChangeText={(v) => updateTarget(item.id, 'target_sets', v)}
-                  />
-                  <Text style={styles.x}>x</Text>
-                  <TextInput
-                    style={styles.smallInput}
-                    keyboardType="number-pad"
-                    inputAccessoryViewID={Platform.OS === 'ios' ? DONE_ACCESSORY_ID : undefined}
-                    value={String(selectedItem.target_reps)}
-                    onChangeText={(v) => updateTarget(item.id, 'target_reps', v)}
-                  />
-                </View>
-              )}
             </View>
-          );
-        })}
 
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={saving} activeOpacity={0.85}>
-          <Text style={styles.saveButtonText}>{saving ? 'Salvando...' : isEditing ? 'Salvar alterações' : 'Salvar Treino'}</Text>
-        </TouchableOpacity>
+            {groupNames.map((groupName) => {
+              const items = groupedExercises[groupName];
+              const groupColor = colorForGroup(groupName);
+              const selCount = items.filter((it) => isSelected(it.id)).length;
+              const isOpen = openGroups[groupName] !== false;
+              return (
+                <View key={groupName}>
+                  <TouchableOpacity
+                    style={styles.groupHeader}
+                    onPress={() => setOpenGroups((p) => ({ ...p, [groupName]: !isOpen }))}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.groupDot, { backgroundColor: groupColor }]} />
+                    <Text style={styles.groupTitle}>{groupName}</Text>
+                    <View style={styles.groupCount}>
+                      <Text style={styles.groupCountText}>
+                        {selCount}/{items.length}
+                      </Text>
+                    </View>
+                    <Feather
+                      name={isOpen ? 'chevron-up' : 'chevron-down'}
+                      size={14}
+                      color={colors.textDim2}
+                    />
+                  </TouchableOpacity>
+
+                  {isOpen &&
+                    items.map((item) => {
+                      const sel = selectedOf(item.id);
+                      const partnerName = sel ? comboPartnerName(sel) : null;
+                      return (
+                        <View
+                          key={item.id}
+                          style={[
+                            styles.exCard,
+                            sel && { borderColor: 'rgba(51,226,139,0.35)', backgroundColor: colors.surface2 },
+                          ]}
+                        >
+                          <TouchableOpacity style={styles.exRow} onPress={() => toggleExercise(item)} activeOpacity={0.8}>
+                            <View style={[styles.checkbox, sel && styles.checkboxChecked]}>
+                              {sel && <Feather name="check" size={12} color="#04170F" />}
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.exName}>{item.name}</Text>
+                              <Text style={styles.exGroup}>{groupName}</Text>
+                            </View>
+                          </TouchableOpacity>
+
+                          {sel && (
+                            <View style={styles.exDetail}>
+                              <Stepper
+                                value={sel.target_sets}
+                                onDecrease={() => bumpSets(item.id, -1)}
+                                onIncrease={() => bumpSets(item.id, 1)}
+                              />
+                              <Text style={styles.x}>×</Text>
+                              <Stepper
+                                value={sel.target_reps}
+                                onDecrease={() => bumpReps(item.id, -1)}
+                                onIncrease={() => bumpReps(item.id, 1)}
+                              />
+                              <TouchableOpacity
+                                style={[styles.comboTag, sel.combo_group && styles.comboTagOn]}
+                                onPress={() => setComboTarget(sel)}
+                                activeOpacity={0.8}
+                              >
+                                <Feather name="link" size={11} color={sel.combo_group ? colors.amber : colors.textDim} />
+                                <Text style={[styles.comboTagText, sel.combo_group && styles.comboTagTextOn]}>
+                                  {' '}
+                                  {sel.combo_group ? `Com ${partnerName || '...'}` : 'Combinado'}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
+                </View>
+              );
+            })}
+
+            <View style={styles.customBox}>
+              <Text style={styles.sectionLabel}>Não achou? Adicione um exercício novo:</Text>
+              <View style={{ flexDirection: 'row', marginBottom: 10 }}>
+                <TouchableOpacity
+                  style={[styles.fcBtn, newExerciseType === 'forca' && styles.fcBtnActive, { marginRight: 8 }]}
+                  onPress={() => setNewExerciseType('forca')}
+                >
+                  <Text style={[styles.fcBtnText, newExerciseType === 'forca' && styles.fcBtnTextActive]}>⚡ Força</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.fcBtn, newExerciseType === 'cardio' && styles.fcBtnActive]}
+                  onPress={() => setNewExerciseType('cardio')}
+                >
+                  <Text style={[styles.fcBtnText, newExerciseType === 'cardio' && styles.fcBtnTextActive]}>♡ Cardio</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ flexDirection: 'row' }}>
+                <TextInput
+                  style={[styles.smallFlexInput, { marginRight: 8 }]}
+                  placeholder="Nome do exercício"
+                  placeholderTextColor={colors.textDim2}
+                  value={newExerciseName}
+                  onChangeText={setNewExerciseName}
+                />
+                {newExerciseType === 'forca' && (
+                  <TextInput
+                    style={styles.smallFlexInput}
+                    placeholder="Grupo (opcional)"
+                    placeholderTextColor={colors.textDim2}
+                    value={newExerciseGroup}
+                    onChangeText={setNewExerciseGroup}
+                  />
+                )}
+              </View>
+
+              <Text style={[styles.sectionLabel, { marginTop: 12 }]}>Vídeo de demonstração (opcional):</Text>
+              {selectedVideo ? (
+                <View style={styles.videoSelectedRow}>
+                  <Feather name="film" size={13} color={colors.accent} />
+                  <Text style={styles.videoSelectedText}> {selectedVideo.name}</Text>
+                  <TouchableOpacity onPress={() => setSelectedVideo(null)}>
+                    <Text style={styles.videoRemove}>trocar</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Buscar vídeo já enviado, pelo nome"
+                    placeholderTextColor={colors.textDim2}
+                    value={videoSearch}
+                    onChangeText={setVideoSearch}
+                  />
+                  {filteredVideos.length > 0 && (
+                    <View style={styles.videoResultsBox}>
+                      {filteredVideos.map((v) => (
+                        <TouchableOpacity
+                          key={v.id}
+                          style={styles.videoResultRow}
+                          onPress={() => {
+                            setSelectedVideo(v);
+                            setVideoSearch('');
+                          }}
+                        >
+                          <Feather name="film" size={13} color={colors.accent} />
+                          <Text style={styles.videoResultText}> {v.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    onPress={() =>
+                      navigation.navigate('UploadVideo', {
+                        exerciseName: newExerciseName.trim() || undefined,
+                      })
+                    }
+                  >
+                    <Text style={styles.uploadLink}>+ Enviar vídeo novo</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              <TouchableOpacity
+                style={[styles.addButton, { marginTop: 12 }]}
+                onPress={handleAddCustomExercise}
+                disabled={addingExercise}
+              >
+                <Text style={styles.addButtonText}>{addingExercise ? '...' : 'Adicionar exercício'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.nextBtn} onPress={() => setStep(2)} activeOpacity={0.85}>
+              <Text style={styles.nextBtnText}>Ir para aeróbico</Text>
+              <Feather name="chevron-right" size={16} color="#04170F" />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* PASSO 3: AERÓBICO */}
+        {step === 2 && (
+          <View>
+            <Text style={styles.fieldLabel}>
+              Selecione os exercícios aeróbicos <Text style={styles.hint}>opcional</Text>
+            </Text>
+
+            {cardioExercises.length === 0 && (
+              <Text style={styles.emptyHint}>
+                Nenhum exercício aeróbico cadastrado ainda. Volte para "Exercícios" e adicione um marcando o tipo{' '}
+                <Text style={{ color: colors.accent, fontWeight: '700' }}>Cardio</Text>.
+              </Text>
+            )}
+
+            {cardioExercises.map((item) => {
+              const sel = selectedOf(item.id);
+              return (
+                <View
+                  key={item.id}
+                  style={[
+                    styles.exCard,
+                    sel && { borderColor: 'rgba(255,90,122,0.4)', backgroundColor: colors.surface2 },
+                  ]}
+                >
+                  <TouchableOpacity style={styles.exRow} onPress={() => toggleExercise(item)} activeOpacity={0.8}>
+                    <View style={styles.cardioIcon}>
+                      <Feather name="activity" size={16} color={CARDIO_COLOR} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.exName}>{item.name}</Text>
+                      <Text style={styles.exGroup}>Aeróbico</Text>
+                    </View>
+                    <View style={[styles.checkbox, sel && { backgroundColor: CARDIO_COLOR, borderColor: CARDIO_COLOR }]}>
+                      {sel && <Feather name="check" size={12} color="#04170F" />}
+                    </View>
+                  </TouchableOpacity>
+
+                  {sel && (
+                    <View style={[styles.exDetail, { flexWrap: 'wrap' }]}>
+                      <Stepper
+                        value={sel.target_duration_minutes}
+                        suffix="min"
+                        tint
+                        onDecrease={() => bumpDuration(item.id, -1)}
+                        onIncrease={() => bumpDuration(item.id, 1)}
+                      />
+                      <TextInput
+                        style={styles.distanceInput}
+                        placeholder="km"
+                        placeholderTextColor={colors.textDim2}
+                        keyboardType="decimal-pad"
+                        inputAccessoryViewID={Platform.OS === 'ios' ? DONE_ACCESSORY_ID : undefined}
+                        value={sel.target_distance_km != null ? String(sel.target_distance_km) : ''}
+                        onChangeText={(v) => patchSelected(item.id, { target_distance_km: v ? parseFloat(v.replace(',', '.')) : null })}
+                      />
+                      <View style={styles.intensityRow}>
+                        {INTENSITIES.map((iv) => (
+                          <TouchableOpacity
+                            key={iv.key}
+                            style={[styles.intensityChip, sel.target_intensity === iv.key && styles.intensityChipOn]}
+                            onPress={() => patchSelected(item.id, { target_intensity: iv.key })}
+                          >
+                            <Text
+                              style={[
+                                styles.intensityChipText,
+                                sel.target_intensity === iv.key && styles.intensityChipTextOn,
+                              ]}
+                            >
+                              {iv.label}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+
+            <TouchableOpacity style={styles.nextBtn} onPress={() => setStep(3)} activeOpacity={0.85}>
+              <Text style={styles.nextBtnText}>Ir para revisão</Text>
+              <Feather name="chevron-right" size={16} color="#04170F" />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* PASSO 4: REVISÃO */}
+        {step === 3 && (
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryTitle}>{name || 'Treino sem nome'}</Text>
+            {subtitleParts.length > 0 && <Text style={styles.summarySub}>{subtitleParts.join(' · ')}</Text>}
+
+            <View style={styles.metaGrid}>
+              <View style={styles.metaBox}>
+                <Text style={styles.metaK}>Exercícios</Text>
+                <Text style={styles.metaV}>{totalCount} selecionados</Text>
+              </View>
+              <View style={styles.metaBox}>
+                <Text style={styles.metaK}>Duração est.</Text>
+                <Text style={styles.metaV}>{totalCount > 0 ? `${estimatedMinutes} min` : '—'}</Text>
+              </View>
+            </View>
+
+            {(groupsUsed.length > 0 || cardioSelected.length > 0) && (
+              <View style={styles.legendRow}>
+                {groupsUsed.map((g) => (
+                  <View key={g} style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: colorForGroup(g) }]} />
+                    <Text style={styles.legendText}>{g}</Text>
+                    <Text style={styles.legendCount}>{forceSelected.filter((e) => (e.muscle_group || 'Outros') === g).length}</Text>
+                  </View>
+                ))}
+                {cardioSelected.length > 0 && (
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: CARDIO_COLOR }]} />
+                    <Text style={styles.legendText}>Aeróbico</Text>
+                    <Text style={styles.legendCount}>{cardioSelected.length}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {totalCount === 0 ? (
+              <View style={styles.emptyState}>
+                <Feather name="inbox" size={30} color={colors.textDim2} />
+                <Text style={styles.emptyStateText}>
+                  Nenhum exercício selecionado ainda.{'\n'}Volte para as etapas 2 e 3 e escolha alguns.
+                </Text>
+              </View>
+            ) : (
+              <View style={{ gap: 8 }}>
+                {selected.map((e, idx) => {
+                  const color = isForce(e) ? colorForGroup(e.muscle_group) : CARDIO_COLOR;
+                  return (
+                    <View key={e.exercise_id} style={[styles.reviewItem, { borderLeftColor: color }]}>
+                      <Text style={styles.reviewN}>{String(idx + 1).padStart(2, '0')}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.reviewName}>
+                          {e.name}
+                          {e.combo_group ? ' 🔗' : ''}
+                        </Text>
+                        <Text style={styles.reviewGroup}>
+                          {isForce(e)
+                            ? e.muscle_group || 'Outros'
+                            : `${e.target_intensity || 'moderada'}${e.target_distance_km ? ` · ${e.target_distance_km}km` : ''}`}
+                        </Text>
+                      </View>
+                      <Text style={styles.reviewStat}>
+                        {isForce(e) ? `${e.target_sets}×${e.target_reps}` : `${e.target_duration_minutes} min`}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        )}
       </ScrollView>
+
+      {/* Barra inferior fixa */}
+      <View style={styles.bottomBar}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.bottomBig}>
+            {totalCount} exercício{totalCount !== 1 ? 's' : ''}
+          </Text>
+          <Text style={styles.bottomLbl}>
+            {groupsUsed.length > 0 ? `${groupsUsed.length} grupo${groupsUsed.length !== 1 ? 's' : ''} coberto${groupsUsed.length !== 1 ? 's' : ''}` : 'nenhum grupo coberto ainda'}
+            {cardioSelected.length > 0 ? ` · ${cardioSelected.length} aeróbico${cardioSelected.length !== 1 ? 's' : ''}` : ''}
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving} activeOpacity={0.85}>
+          <Text style={styles.saveBtnText}>{saving ? 'Salvando...' : isEditing ? 'Salvar alterações' : 'Salvar treino'}</Text>
+          <Feather name="check" size={14} color="#04170F" />
+        </TouchableOpacity>
+      </View>
 
       {Platform.OS === 'ios' && (
         <InputAccessoryView nativeID={DONE_ACCESSORY_ID}>
@@ -437,11 +1023,49 @@ export default function CreateWorkoutScreen({ route, navigation }) {
         </InputAccessoryView>
       )}
 
+      {/* Modal: vincular combinado */}
+      <Modal visible={!!comboTarget} transparent animationType="slide" onRequestClose={() => setComboTarget(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Vincular combinado</Text>
+            <Text style={styles.modalSub}>Toque em outro exercício para formar um combinado (bi-set) com "{comboTarget?.name}"</Text>
+            <FlatList
+              style={{ maxHeight: 320, marginTop: 12 }}
+              data={selected.filter((s) => isForce(s) && s.exercise_id !== comboTarget?.exercise_id)}
+              keyExtractor={(s) => s.exercise_id}
+              ListEmptyComponent={<Text style={styles.modalEmpty}>Selecione outro exercício de força no treino para poder vincular.</Text>}
+              renderItem={({ item }) => {
+                const picked = comboTarget?.combo_group && item.combo_group === comboTarget.combo_group;
+                return (
+                  <TouchableOpacity
+                    style={[styles.modalOption, picked && styles.modalOptionPicked]}
+                    onPress={() => linkCombo(comboTarget, item)}
+                  >
+                    <View style={[styles.legendDot, { backgroundColor: colorForGroup(item.muscle_group) }]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.modalOptionName}>{item.name}</Text>
+                      <Text style={styles.modalOptionGroup}>{item.muscle_group || 'Outros'}</Text>
+                    </View>
+                    {picked && <Feather name="check" size={16} color={colors.accent} />}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+            {comboTarget?.combo_group && (
+              <TouchableOpacity style={styles.modalClose} onPress={() => unlinkCombo(comboTarget)}>
+                <Text style={[styles.modalCloseText, { color: colors.red }]}>Remover vínculo</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.modalClose} onPress={() => setComboTarget(null)}>
+              <Text style={styles.modalCloseText}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal: anexar vídeo */}
       <Modal visible={!!attachTarget} transparent animationType="slide" onRequestClose={() => setAttachTarget(null)}>
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalBox}>
             <Text style={styles.modalTitle}>Vídeo para "{attachTarget?.name}"</Text>
             <TextInput
@@ -487,10 +1111,83 @@ export default function CreateWorkoutScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: 60 },
-  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginLeft: -4 },
-  back: { color: colors.text, fontSize: 15, marginLeft: 2 },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 16 },
+  container: { flex: 1, backgroundColor: colors.bg, paddingTop: 54 },
+
+  // Header
+  topbar: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, marginBottom: 4 },
+  backBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  eyebrow: { color: colors.textDim2, fontSize: 11, letterSpacing: 0.6, textTransform: 'uppercase' },
+  topTitle: { color: colors.text, fontSize: 19, fontWeight: '800', marginTop: 2 },
+  ringBadge: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.accentGlow,
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  ringBadgeNum: { color: colors.accent, fontWeight: '800', fontSize: 14 },
+  ringBadgeLabel: { color: colors.textDim2, fontSize: 10, marginLeft: 2 },
+
+  // Step tabs
+  steps: {
+    flexDirection: 'row',
+    marginHorizontal: 18,
+    marginTop: 14,
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  stepBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 9,
+    borderRadius: 11,
+  },
+  stepBtnActive: { backgroundColor: colors.accent },
+  stepNum: {
+    width: 15,
+    height: 15,
+    borderRadius: 8,
+    backgroundColor: colors.surface3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepNumActive: { backgroundColor: '#08110A' },
+  stepNumText: { color: colors.textDim, fontSize: 8.5, fontWeight: '700' },
+  stepNumTextActive: { color: colors.accent },
+  stepBtnText: { color: colors.textDim2, fontSize: 11, fontWeight: '700' },
+  stepBtnTextActive: { color: '#08110A' },
+
+  fieldLabel: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: colors.textDim,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 18,
+    marginBottom: 9,
+  },
+  hint: { fontWeight: '400', textTransform: 'none', color: colors.textDim2, fontSize: 11 },
+  sectionLabel: { color: colors.textDim, marginBottom: 8, fontSize: 13 },
+  emptyHint: { color: colors.textDim2, fontSize: 13, lineHeight: 19, marginTop: 4 },
+
   input: {
     backgroundColor: colors.surface,
     color: colors.text,
@@ -498,55 +1195,197 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.sm,
     padding: 14,
-    marginBottom: 16,
-    fontSize: 16,
+    fontSize: 15,
   },
-  sectionLabel: { color: colors.textDim, marginBottom: 8, fontSize: 13 },
-  exerciseRow: {
+
+  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  dayPill: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayPillActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  dayPillText: { color: colors.textDim, fontWeight: '700', fontSize: 12 },
+  dayPillTextActive: { color: '#08110A' },
+
+  chip: {
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chipActive: { backgroundColor: colors.accentGlow, borderColor: colors.accent },
+  chipText: { color: colors.textDim, fontSize: 12.5, fontWeight: '600' },
+  chipTextActive: { color: colors.accent },
+
+  levelTrack: { flexDirection: 'row', gap: 8 },
+
+  dateRow: { flexDirection: 'row', gap: 10 },
+  dateLabel: { color: colors.textDim2, fontSize: 10.5, marginBottom: 5 },
+
+  nextBtn: {
+    marginTop: 24,
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    paddingVertical: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  nextBtnText: { color: '#04170F', fontWeight: '700', fontSize: 14.5 },
+
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    padding: 12,
-    marginBottom: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 14,
   },
-  exerciseInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  searchInput: { flex: 1, color: colors.text, fontSize: 14 },
+
+  groupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    marginTop: 2,
+  },
+  groupDot: { width: 9, height: 9, borderRadius: 5 },
+  groupTitle: { color: colors.text, fontSize: 14.5, fontWeight: '700', flex: 1, textTransform: 'capitalize' },
+  groupCount: {
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  groupCountText: { color: colors.textDim2, fontSize: 11, fontWeight: '600' },
+
+  exCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: 13,
+    marginTop: 8,
+  },
+  exRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   checkbox: {
     width: 22,
     height: 22,
     borderRadius: 6,
     borderWidth: 1.5,
     borderColor: colors.border2,
-    marginRight: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   checkboxChecked: { backgroundColor: colors.accent, borderColor: colors.accent },
-  exerciseName: { color: colors.text, fontSize: 14.5, fontWeight: '600' },
-  exerciseGroup: { color: colors.textDim, fontSize: 12 },
-  targetInputs: { flexDirection: 'row', alignItems: 'center' },
-  smallInput: {
-    backgroundColor: colors.surface2,
-    color: colors.text,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm - 4,
-    width: 40,
-    textAlign: 'center',
-    paddingVertical: 6,
+  exName: { color: colors.text, fontSize: 14.5, fontWeight: '600' },
+  exGroup: { color: colors.textDim2, fontSize: 11.5, marginTop: 1, textTransform: 'capitalize' },
+  exDetail: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    borderStyle: 'dashed',
   },
-  x: { color: colors.textDim, marginHorizontal: 6 },
+  x: { color: colors.textDim2, fontSize: 12 },
+
+  stepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface3,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  stepperBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  stepperBtnText: { color: colors.accent, fontSize: 16, fontWeight: '700' },
+  stepperVal: { color: colors.text, fontWeight: '700', fontSize: 12.5, minWidth: 30, textAlign: 'center' },
+
+  comboTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface3,
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  comboTagOn: { backgroundColor: 'rgba(253,180,78,0.14)', borderColor: 'rgba(253,180,78,0.4)' },
+  comboTagText: { color: colors.textDim, fontSize: 10.5, fontWeight: '700' },
+  comboTagTextOn: { color: colors.amber },
+
+  cardioIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,90,122,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  distanceInput: {
+    backgroundColor: colors.surface3,
+    color: colors.text,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontSize: 12.5,
+    width: 64,
+  },
+  intensityRow: { flexDirection: 'row', gap: 6, marginTop: 8, width: '100%' },
+  intensityChip: {
+    backgroundColor: colors.surface3,
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  intensityChipOn: { backgroundColor: 'rgba(255,90,122,0.14)', borderColor: 'rgba(255,90,122,0.4)' },
+  intensityChipText: { color: colors.textDim, fontSize: 10.5, fontWeight: '700' },
+  intensityChipTextOn: { color: CARDIO_COLOR },
+
   customBox: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
+    borderStyle: 'dashed',
     borderRadius: radius.md,
-    padding: 12,
-    marginBottom: 16,
+    padding: 14,
+    marginTop: 16,
   },
+  fcBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface2,
+    alignItems: 'center',
+  },
+  fcBtnActive: { backgroundColor: colors.accentGlow, borderColor: colors.accent },
+  fcBtnText: { color: colors.textDim, fontSize: 12.5, fontWeight: '600' },
+  fcBtnTextActive: { color: colors.accent },
   smallFlexInput: {
     flex: 1,
     backgroundColor: colors.surface2,
@@ -559,20 +1398,7 @@ const styles = StyleSheet.create({
   },
   addButton: { backgroundColor: colors.accent, borderRadius: radius.sm - 2, paddingVertical: 10, alignItems: 'center' },
   addButtonText: { color: '#04170F', fontWeight: '700', fontSize: 13 },
-  dayRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16 },
-  dayChip: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.sm - 2,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginRight: 8,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  dayChipSelected: { borderColor: colors.accent, backgroundColor: colors.accentGlow },
-  dayChipText: { color: colors.textDim, fontSize: 13, fontWeight: '600' },
-  dayChipTextSelected: { color: colors.accent },
+
   videoChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -596,12 +1422,87 @@ const styles = StyleSheet.create({
   },
   videoSelectedText: { color: colors.accent, fontSize: 13, fontWeight: '600', flex: 1 },
   videoRemove: { color: colors.textDim, fontSize: 12, textDecorationLine: 'underline' },
-  videoResultsBox: { backgroundColor: colors.surface2, borderRadius: radius.sm - 2, marginTop: -8, marginBottom: 12 },
+  videoResultsBox: { backgroundColor: colors.surface2, borderRadius: radius.sm - 2, marginTop: 8, marginBottom: 4 },
   videoResultRow: { flexDirection: 'row', alignItems: 'center', padding: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
   videoResultText: { color: colors.text, fontSize: 13 },
-  uploadLink: { color: colors.accent, fontSize: 13, marginBottom: 4, fontWeight: '600' },
-  saveButton: { backgroundColor: colors.accent, borderRadius: radius.sm, padding: 16, alignItems: 'center', marginTop: 12 },
-  saveButtonText: { color: '#04170F', fontWeight: '700', fontSize: 16 },
+  uploadLink: { color: colors.accent, fontSize: 13, marginTop: 8, marginBottom: 4, fontWeight: '600' },
+
+  // Revisão
+  summaryCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.xl, padding: 18 },
+  summaryTitle: { color: colors.text, fontSize: 19, fontWeight: '800' },
+  summarySub: { color: colors.textDim2, fontSize: 12.5, marginTop: 2, marginBottom: 16 },
+  metaGrid: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  metaBox: { flex: 1, backgroundColor: colors.surface2, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border },
+  metaK: { color: colors.textDim2, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '600' },
+  metaV: { color: colors.text, fontSize: 13.5, fontWeight: '700', marginTop: 3 },
+  legendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendText: { color: colors.textDim, fontSize: 11, fontWeight: '600', textTransform: 'capitalize' },
+  legendCount: { color: colors.text, fontSize: 11, fontWeight: '700' },
+  reviewItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 11,
+    backgroundColor: colors.surface2,
+    borderRadius: 12,
+    borderLeftWidth: 3,
+  },
+  reviewN: { color: colors.textDim2, fontSize: 11, width: 16 },
+  reviewName: { color: colors.text, fontSize: 13.5, fontWeight: '600' },
+  reviewGroup: { color: colors.textDim2, fontSize: 10.5, marginTop: 1, textTransform: 'capitalize' },
+  reviewStat: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '700',
+    backgroundColor: colors.accentGlow,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  emptyState: { alignItems: 'center', paddingVertical: 30, gap: 10 },
+  emptyStateText: { color: colors.textDim2, fontSize: 13, textAlign: 'center', lineHeight: 19 },
+
+  // Barra inferior
+  bottomBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 18,
+    backgroundColor: colors.bg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  bottomBig: { color: colors.accent, fontWeight: '800', fontSize: 17 },
+  bottomLbl: { color: colors.textDim2, fontSize: 10.5, marginTop: 2 },
+  saveBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  saveBtnText: { color: '#04170F', fontWeight: '700', fontSize: 14 },
+
   accessoryBar: {
     backgroundColor: colors.surface,
     padding: 8,
@@ -610,6 +1511,7 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   accessoryDone: { color: colors.accent, fontWeight: '700', fontSize: 15, paddingHorizontal: 12, paddingVertical: 4 },
+
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalBox: {
     backgroundColor: colors.surface2,
@@ -618,9 +1520,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: 20,
-    maxHeight: '75%',
+    maxHeight: '78%',
   },
-  modalTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: 12 },
+  modalTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  modalSub: { color: colors.textDim2, fontSize: 12, marginTop: 4 },
   modalInput: {
     backgroundColor: colors.surface,
     color: colors.text,
@@ -628,10 +1531,25 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.sm,
     padding: 12,
+    marginTop: 12,
     marginBottom: 12,
     fontSize: 14,
   },
   modalEmpty: { color: colors.textDim, fontSize: 13, paddingVertical: 12 },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+  },
+  modalOptionPicked: { borderColor: colors.accent, backgroundColor: colors.accentGlow },
+  modalOptionName: { color: colors.text, fontSize: 13.5, fontWeight: '600' },
+  modalOptionGroup: { color: colors.textDim2, fontSize: 10.5, marginTop: 1, textTransform: 'capitalize' },
   modalVideoRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
   modalVideoText: { color: colors.text, fontSize: 14 },
   modalClose: { marginTop: 12, alignItems: 'center', paddingVertical: 10 },
