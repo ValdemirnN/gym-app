@@ -306,6 +306,23 @@ export default function PersonalProfileScreen() {
         <FieldCard label="Horários de disponibilidade" value={displayValue(availabilityHours)} />
         <FieldCard label="Chave Pix" value={displayValue(pixKey)} />
 
+        <Text style={styles.eyebrow}>Financeiro</Text>
+        <TouchableOpacity
+          style={styles.financialCard}
+          onPress={() => navigation.navigate('PersonalFinancialScreen')}
+          activeOpacity={0.8}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={styles.fieldLabel}>Situação com a plataforma</Text>
+            <Text style={styles.fieldValue}>Ativo · vence em 3 dias</Text>
+            <View style={styles.statusLine}>
+              <View style={styles.statusDot} />
+              <Text style={styles.statusText}>Renovação pendente</Text>
+            </View>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={styles.helpButton}
           onPress={() => navigation.navigate('PersonalDashboard', { screen: 'Faq', params: { role: 'personal' } })}
@@ -637,4 +654,40 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
   },
   helpButtonText: { color: colors.text, fontSize: 14, fontWeight: '600' },
+
+  // ---- seção financeiro ----
+  financialCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingVertical: 14,
+    paddingHorizontal: 15,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 5,
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.amber,
+    marginRight: 6,
+  },
+  statusText: {
+    color: colors.amber,
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  chevron: {
+    color: colors.textFaint,
+    fontSize: 22,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
 });

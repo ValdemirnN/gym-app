@@ -153,6 +153,24 @@ export default function PersonalDashboardScreen({ navigation }) {
       </View>
       <Text style={styles.subtitle}>Aqui está o resumo da sua carteira de alunos</Text>
 
+      {/* Banner de alerta de vencimento */}
+      <TouchableOpacity
+        style={styles.alertBanner}
+        onPress={() => navigation.navigate('PersonalFinancialScreen')}
+        activeOpacity={0.85}
+      >
+        <View style={styles.alertIcon}>
+          <Feather name="alert-triangle" size={18} color={colors.amber} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.alertTitle}>Seu acesso vence em 3 dias</Text>
+          <Text style={styles.alertSub}>
+            Renove para continuar liberando treinos aos seus alunos sem interrupção.
+          </Text>
+        </View>
+        <Feather name="chevron-right" size={18} color={colors.amber} style={{ marginLeft: 8 }} />
+      </TouchableOpacity>
+
       <View style={styles.grid}>
         <View style={[styles.card, styles.cardGreen]}>
           <Text style={styles.cardValue}>{stats.total}</Text>
@@ -371,4 +389,27 @@ const styles = StyleSheet.create({
   badgePendingText: { color: colors.amber, fontSize: 11, fontWeight: '700' },
   badgeBlocked: { backgroundColor: colors.redGlow, borderRadius: radius.sm - 4, paddingHorizontal: 10, paddingVertical: 5 },
   badgeTextBlocked: { color: colors.red, fontSize: 11, fontWeight: '700' },
+
+  // ---- banner de alerta de vencimento ----
+  alertBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.amberGlow,
+    borderWidth: 1,
+    borderColor: colors.amber + '55',
+    borderRadius: radius.md,
+    padding: 16,
+    marginBottom: 20,
+  },
+  alertIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: colors.amberGlow,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  alertTitle: { color: colors.text, fontWeight: '700', fontSize: 14.5 },
+  alertSub: { color: colors.amber, fontSize: 13, marginTop: 3, lineHeight: 18, opacity: 0.85 },
 });
