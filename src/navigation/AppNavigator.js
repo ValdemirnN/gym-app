@@ -49,6 +49,8 @@ import FaqScreen from '../screens/FaqScreen';
 import ParqScreen from '../screens/ParqScreen';
 import StudentParqViewScreen from '../screens/StudentParqViewScreen';
 import StudentOwnSubscriptionScreen from '../screens/StudentOwnSubscriptionScreen';
+import AccessBlockedScreen from '../screens/AccessBlockedScreen';
+import PersonalFinancialScreen from '../screens/PersonalFinancialScreen';
 
 // <<<--- 1. IMPORTAÇÃO DA NOVA TELA ADICIONADA AQUI --->>>
 import NotificationsScreen from '../screens/NotificationsScreen';
@@ -59,7 +61,8 @@ const ClientChatStackNav = createNativeStackNavigator();
 const PersonalStack = createNativeStackNavigator();
 const PersonalChatStackNav = createNativeStackNavigator();
 // <<<--- 2. NOVO STACK PARA O DASHBOARD DO PERSONAL --->>>
-const PersonalHomeStackNav = createNativeStackNavigator(); 
+const PersonalHomeStackNav = createNativeStackNavigator();
+const PersonalProfileStackNav = createNativeStackNavigator();
 
 const Tab = createBottomTabNavigator();
 const PersonalTab = createBottomTabNavigator();
@@ -182,7 +185,17 @@ function PersonalHomeStack() {
       <PersonalHomeStackNav.Screen name="NotificationsScreen" component={NotificationsScreen} />
       <PersonalHomeStackNav.Screen name="Challenges" component={ChallengesScreen} />
       <PersonalHomeStackNav.Screen name="Faq" component={FaqScreen} />
+      <PersonalHomeStackNav.Screen name="PersonalFinancialScreen" component={PersonalFinancialScreen} />
     </PersonalHomeStackNav.Navigator>
+  );
+}
+
+function PersonalProfileStack() {
+  return (
+    <PersonalProfileStackNav.Navigator screenOptions={{ headerShown: false }}>
+      <PersonalProfileStackNav.Screen name="PersonalProfileMain" component={PersonalProfileScreen} />
+      <PersonalProfileStackNav.Screen name="PersonalFinancialScreen" component={PersonalFinancialScreen} />
+    </PersonalProfileStackNav.Navigator>
   );
 }
 
@@ -240,8 +253,9 @@ function PersonalTabs() {
       />
       <PersonalTab.Screen
         name="PersonalProfile"
-        component={PersonalProfileScreen}
+        component={PersonalProfileStack}
         options={{ tabBarLabel: 'Perfil', tabBarIcon: ({ color }) => <Feather name="user" size={22} color={color} /> }}
+        listeners={resetToRootOnTabPress('PersonalProfileMain')}
       />
     </PersonalTab.Navigator>
   );
@@ -325,7 +339,15 @@ export default function AppNavigator() {
   } else if (profile.role === 'personal') {
     content = <PersonalTabs />;
   } else {
-    content = <MainTabs />;
+    // Verifica bloqueio de acesso do aluno (cliente)
+    const accessBlocked = profile.access_blocked;
+    const accessExpired = profile.access_expires_at && new Date(profile.access_expires_at) < new Date();
+    const semAcesso = !profile.access_expires_at; // nunca teve pagamento confirmado
+    if (accessBlocked || accessExpired || semAcesso) {
+      content = <AccessBlockedScreen />;
+    } else {
+      content = <MainTabs />;
+    }
   }
 
   return <NavigationContainer>{content}</NavigationContainer>;
