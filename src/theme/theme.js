@@ -1,4 +1,6 @@
-// src/theme/theme.js - Corrigido com Rasgua dark theme + redesign
+// src/theme/theme.js - Com suporte a responsividade
+
+import { s, vs, ms, fs, isSmallDevice } from '../utils/responsive';
 
 const Colors = {
   // Background
@@ -14,11 +16,11 @@ const Colors = {
   // Text
   text: '#F3F5F8',
   textDim: '#8D96A6',
-  textDim2: '#8D96A6', // alias para compatibilidade
+  textDim2: '#8D96A6',
   textFaint: '#565E6E',
 
-  // Accent colors (lime é a cor principal)
-  accent: '#2FE6A0', // lime
+  // Accent colors
+  accent: '#2FE6A0',
   accentDark: '#1E9E6E',
   accentGlow: 'rgba(47,230,160,0.14)',
   lime: '#2FE6A0',
@@ -30,10 +32,8 @@ const Colors = {
   redGlow: 'rgba(255,90,122,0.14)',
   danger: '#FF5A7A',
 
-  // Segunda variante de borda (um pouco mais clara, usada em separadores/inputs)
   border2: '#3A4356',
 
-  // Muscle group colors
   muscleGroups: {
     peito: '#FF6B4A',
     costas: '#4FA8FF',
@@ -47,78 +47,64 @@ const Colors = {
 };
 
 const Fonts = {
-  // Oswald (headings)
-  oswald700: {
-    fontFamily: 'Oswald_700Bold',
-    fontWeight: '700',
-  },
-  oswald600: {
-    fontFamily: 'Oswald_600SemiBold',
-    fontWeight: '600',
-  },
-  oswald500: {
-    fontFamily: 'Oswald_500Medium',
-    fontWeight: '500',
-  },
+  oswald700: { fontFamily: 'Oswald_700Bold',    fontWeight: '700' },
+  oswald600: { fontFamily: 'Oswald_600SemiBold', fontWeight: '600' },
+  oswald500: { fontFamily: 'Oswald_500Medium',   fontWeight: '500' },
 
-  // Inter (body)
-  bold: {
-    fontFamily: 'Inter_700Bold',
-    fontWeight: '700',
-  },
-  semibold: {
-    fontFamily: 'Inter_600SemiBold',
-    fontWeight: '600',
-  },
-  medium: {
-    fontFamily: 'Inter_500Medium',
-    fontWeight: '500',
-  },
-  regular: {
-    fontFamily: 'Inter_400Regular',
-    fontWeight: '400',
-  },
+  bold:     { fontFamily: 'Inter_700Bold',     fontWeight: '700' },
+  semibold: { fontFamily: 'Inter_600SemiBold', fontWeight: '600' },
+  medium:   { fontFamily: 'Inter_500Medium',   fontWeight: '500' },
+  regular:  { fontFamily: 'Inter_400Regular',  fontWeight: '400' },
 
-  // JetBrains Mono (mono)
   monoSmall: {
     fontFamily: 'JetBrainsMono_700Bold',
     fontWeight: '700',
-    fontSize: 10.5,
+    fontSize: fs(9),
   },
 };
 
+// Espaçamentos escaláveis
 const Spacing = {
-  xs: 8,    // 8px
-  sm: 12,   // 12px
-  md: 16,   // 16px
-  lg: 18,   // 18px
-  xl: 24,   // 24px
-  xxl: 32,  // 32px
+  xs:  vs(8),
+  sm:  vs(12),
+  md:  vs(16),
+  lg:  vs(18),
+  xl:  vs(24),
+  xxl: vs(32),
 };
 
+// Raios responsivos
 const BorderRadius = {
-  sm: 10,
-  md: 16,
-  lg: 22,
-  xl: 28,
-  xxl: 36,
+  sm:  ms(10, 0.3),
+  md:  ms(16, 0.3),
+  lg:  ms(22, 0.3),
+  xl:  ms(28, 0.3),
+  xxl: ms(36, 0.3),
   pill: 999,
 };
 
-const radius = BorderRadius; // alias para compatibilidade com código atual
+const radius = BorderRadius;
 
-// Exports em minúsculas para compatibilidade com código existente
-export const colors = Colors;
+// ─── Font sizes responsivos prontos para usar ─────────────────────────────────
+export const fontSizes = {
+  xs:   fs(9),
+  sm:   fs(10),
+  md:   fs(12),
+  base: fs(13),
+  lg:   fs(14),
+  xl:   fs(16),
+  xxl:  fs(20),
+  h1:   fs(24),
+  h2:   fs(20),
+  h3:   fs(16),
+};
+
+// ─── Exports ──────────────────────────────────────────────────────────────────
+export const colors  = Colors;
 export const spacing = Spacing;
 export const radius_export = radius;
+export { Colors, Fonts, Spacing, BorderRadius, radius };
 
-// Exports em maiúsculas para novos componentes
-export { Colors, Fonts, Spacing, BorderRadius };
-export { radius };
-
-// Retorna a cor associada a um grupo muscular (ou ao cardio), com fallback
-// pro accent quando o grupo não é reconhecido. Usado pra colorir ícones,
-// bordas e badges de exercício de forma consistente pelo app.
 function normalizeGroupKey(str) {
   return (str || '')
     .toLowerCase()
