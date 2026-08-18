@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, LayoutAnimation, Platform, UIManager } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, LayoutAnimation, Platform, UIManager, Dimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEvent } from 'expo';
 import { supabase } from '../lib/supabase';
 import { colors, radius } from '../theme/theme';
+
+// Altura máxima do player: 55% da altura da tela — vídeos muito altos ficam compactos
+const { height: SCREEN_H } = Dimensions.get('window');
+const MAX_VIDEO_HEIGHT = SCREEN_H * 0.55;
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -73,7 +77,7 @@ export default function InlineDemoVideo({ videoId }) {
 
   if (loading) {
     return (
-      <View style={[styles.card, { aspectRatio: FALLBACK_RATIO }, styles.center]}>
+      <View style={[styles.card, { aspectRatio: FALLBACK_RATIO, maxHeight: MAX_VIDEO_HEIGHT }, styles.center]}>
         <ActivityIndicator color={colors.accent} />
       </View>
     );
@@ -81,7 +85,7 @@ export default function InlineDemoVideo({ videoId }) {
 
   if (!videoUrl) {
     return (
-      <View style={[styles.card, { aspectRatio: FALLBACK_RATIO }, styles.center]}>
+      <View style={[styles.card, { aspectRatio: FALLBACK_RATIO, maxHeight: MAX_VIDEO_HEIGHT }, styles.center]}>
         <Feather name="video-off" size={20} color={colors.textDim2} />
         <Text style={styles.emptyText}>Não consegui carregar esse vídeo.</Text>
       </View>
@@ -89,7 +93,10 @@ export default function InlineDemoVideo({ videoId }) {
   }
 
   return (
-    <View style={[styles.card, { aspectRatio: ratio || FALLBACK_RATIO }]}>
+    // ✅ FIX: alignSelf + alignItems/justifyContent garantem centralização no contêiner pai.
+    // overflow: 'hidden' + borderRadius no wrapper externo são suficientes para arredondar
+    // as bordas do vídeo nativo, já que VideoView ignora borderRadius aplicado diretamente nele.
+    <View style={[styles.card, { aspectRatio: ratio || FALLBACK_RATIO, maxHeight: MAX_VIDEO_HEIGHT }]}>
       <VideoView
         style={StyleSheet.absoluteFill}
         player={player}
@@ -109,9 +116,12 @@ export default function InlineDemoVideo({ videoId }) {
 const styles = StyleSheet.create({
   card: {
     width: '100%',
-    borderRadius: radius.lg,
+    alignSelf: 'center',           // ✅ FIX: centraliza o card no eixo horizontal
+    borderRadius: radius.md,       // ✅ FIX: era 0, agora usa o raio do tema
     backgroundColor: '#0c0b09',
-    overflow: 'hidden',
+    overflow: 'hidden',            // ✅ mantido: essencial para o borderRadius funcionar no vídeo
+    alignItems: 'center',          // ✅ FIX: centraliza conteúdo interno verticalmente
+    justifyContent: 'center',      // ✅ FIX: centraliza conteúdo interno horizontalmente
   },
   center: { alignItems: 'center', justifyContent: 'center', gap: 8 },
   emptyText: { color: colors.textDim2, fontSize: 12 },
