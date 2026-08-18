@@ -51,6 +51,36 @@ export function AuthProvider({ children }) {
     }
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
     if (error) {
+      // JWT issued at future: relógio do dispositivo adiantado em relação ao servidor.
+      // Tenta um refresh do token antes de desistir; se funcionar, recarrega o profile.
+      if (
+        error.message?.includes('JWT') ||
+        error.message?.includes('invalid_jwt') ||
+        error.message?.includes('issued at future') ||
+        error.code === 'PGRST301'
+      ) {
+        const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+        if (!refreshError && refreshed?.session) {
+          // Token renovado — tenta buscar o profile novamente com a nova sessão
+          const { data: retryData, error: retryError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .maybeSingle();
+          if (!retryError && retryData) {
+            setProfile(retryData);
+            setProfileMissing(false);
+            return;
+          }
+        }
+        // Se o refresh também falhou, força logout para que o usuário faça login novamente
+        console.warn('Sessão JWT inválida (relógio fora de sincronia?). Fazendo logout.');
+        await supabase.auth.signOut();
+        setSession(null);
+        setProfile(null);
+        setProfileMissing(false);
+        return;
+      }
       console.error('Erro ao carregar profile:', error.message);
       setProfile(null);
       setProfileMissing(false);
