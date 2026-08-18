@@ -1,50 +1,79 @@
 import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { supabase } from './supabase';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// Detecta Expo Go (SDK 53+ removeu push do Expo Go)
+function isRunningInExpoGo() {
+  return (
+    Constants.appOwnership === 'expo' ||
+    Constants.executionEnvironment === 'storeClient' ||
+    Constants.executionEnvironment === 'expo'
+  );
+}
 
-// Pede permissão, pega o token de push do Expo e salva no profile do
-// usuário — é esse token que a Edge Function usa pra saber pra qual
-// celular mandar a notificação.
 export async function registerForPushNotifications(userId) {
-  if (!Device.isDevice) {
-    // Emulador não recebe push de verdade, então nem tenta.
-    return null;
-  }
+  try {
+    // Expo Go SDK 53+ não suporta push — sai antes de importar o módulo
+    if (isRunningInExpoGo()) return null;
 
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-  if (finalStatus !== 'granted') {
-    return null;
-  }
+    // Importa dinamicamente para evitar que o módulo inicialize no Expo Go
+    // (o erro nas imagens vem da inicialização do módulo, não da chamada)
+    const Device = await import('expo-device');
+    if (!Device.default.isDevice) return null;
 
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
-      importance: Notifications.AndroidImportance.DEFAULT,
+    const Notifications = await import('expo-notifications');
+
+    Notifications.default.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
     });
+
+    const { status: existingStatus } =
+      await Notifications.default.getPermissionsAsync();
+    let finalStatus = existingStatus;
+
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.default.requestPermissionsAsync();
+      finalStatus = status;
+    }
+
+    if (finalStatus !== 'granted') return null;
+
+    if (Platform.OS === 'android') {
+      await Notifications.default.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.DEFAULT,
+      });
+    }
+
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    if (!projectId) {
+      console.warn('Push: projectId não encontrado no app.json');
+      return null;
+    }
+
+    const tokenData = await Notifications.default.getExpoPushTokenAsync({
+      projectId,
+    });
+    const token = tokenData?.data;
+
+    if (userId && token) {
+      await supabase
+        .from('profiles')
+        .update({ expo_push_token: token })
+        .eq('id', userId);
+    }
+
+    return token;
+  } catch (error) {
+    // Nunca deixa o push derrubar o app
+    console.warn(
+      'Push notification registration failed (non-fatal):',
+      error?.message
+    );
+    return null;
   }
-
-  const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-  const tokenData = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
-  const token = tokenData.data;
-
-  if (userId && token) {
-    await supabase.from('profiles').update({ expo_push_token: token }).eq('id', userId);
-  }
-
-  return token;
 }
