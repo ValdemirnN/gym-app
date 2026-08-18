@@ -2,10 +2,12 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text, View, ActivityIndicator, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text, View, ActivityIndicator, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 
 import { colors } from '../theme/theme';
+import { s, vs, fs, isSmallDevice } from '../utils/responsive';
 import { useAuth } from '../context/AuthContext';
 import LoginScreen from '../screens/LoginScreen';
 import SignupScreen from '../screens/SignupScreen';
@@ -49,11 +51,15 @@ import FaqScreen from '../screens/FaqScreen';
 import ParqScreen from '../screens/ParqScreen';
 import StudentParqViewScreen from '../screens/StudentParqViewScreen';
 import StudentOwnSubscriptionScreen from '../screens/StudentOwnSubscriptionScreen';
-import AccessBlockedScreen from '../screens/AccessBlockedScreen';
-import PersonalFinancialScreen from '../screens/PersonalFinancialScreen';
 
 // <<<--- 1. IMPORTAÇÃO DA NOVA TELA ADICIONADA AQUI --->>>
 import NotificationsScreen from '../screens/NotificationsScreen';
+
+// <<<--- NOVA TELA: Dashboard de Evolução do Aluno --->>>
+import StudentEvolutionScreen from '../screens/StudentEvolutionScreen';
+
+// <<<--- NOVA TELA: Histórico de Feedbacks do aluno --->>>
+import WorkoutFeedbackHistoryScreen from '../screens/WorkoutFeedbackHistoryScreen';
 
 const AuthStack = createNativeStackNavigator();
 const RootStack = createNativeStackNavigator();
@@ -61,27 +67,35 @@ const ClientChatStackNav = createNativeStackNavigator();
 const PersonalStack = createNativeStackNavigator();
 const PersonalChatStackNav = createNativeStackNavigator();
 // <<<--- 2. NOVO STACK PARA O DASHBOARD DO PERSONAL --->>>
-const PersonalHomeStackNav = createNativeStackNavigator();
-const PersonalProfileStackNav = createNativeStackNavigator();
+const PersonalHomeStackNav = createNativeStackNavigator(); 
 
 const Tab = createBottomTabNavigator();
 const PersonalTab = createBottomTabNavigator();
 const AdminTab = createBottomTabNavigator();
 
-const tabScreenOptions = {
-  headerShown: false,
-  tabBarStyle: {
-    backgroundColor: colors.surface3,
-    borderTopColor: colors.border2,
-    borderTopWidth: 1,
-    height: 64,
-    paddingTop: 8,
-    paddingBottom: 8,
-  },
-  tabBarActiveTintColor: colors.accent,
-  tabBarInactiveTintColor: colors.textDim,
-  tabBarLabelStyle: { fontSize: 10.5, fontWeight: '600' },
-};
+function useTabScreenOptions() {
+  const insets = useSafeAreaInsets();
+  const bottomInset = insets.bottom;
+
+  // Altura base responsiva: menor em telas compactas, maior em telas grandes
+  const tabBarBase = vs(isSmallDevice ? 52 : 58);
+
+  return {
+    headerShown: false,
+    tabBarStyle: {
+      backgroundColor: colors.surface3,
+      borderTopColor: colors.border2,
+      borderTopWidth: 1,
+      height: tabBarBase + bottomInset,
+      paddingTop: vs(isSmallDevice ? 6 : 8),
+      paddingBottom: bottomInset > 0 ? bottomInset : vs(isSmallDevice ? 5 : 7),
+    },
+    tabBarActiveTintColor: colors.accent,
+    tabBarInactiveTintColor: colors.textDim,
+    tabBarLabelStyle: { fontSize: fs(isSmallDevice ? 9.5 : 10.5), fontWeight: '600' },
+    tabBarIconStyle: { marginBottom: vs(-2) },
+  };
+}
 
 function resetToRootOnTabPress(rootScreenName) {
   return ({ navigation, route }) => ({
@@ -112,12 +126,16 @@ function HomeStack() {
       <RootStack.Screen name="HomeMain" component={HomeScreen} />
       <RootStack.Screen name="TalkToPersonal" component={TalkToPersonalScreen} />
       <RootStack.Screen name="Chat" component={ChatScreen} />
-      {/* <<<--- 3. TELA DE NOTIFICAÇÕES DO ALUNO ADICIONADA AQUI --->>> */}
+      {/* <<<--- 3. TELA DE NOTIFICAÇÕES DO ALUNO --->>> */}
       <RootStack.Screen name="NotificationsScreen" component={NotificationsScreen} />
       <RootStack.Screen name="StudentChallenge" component={StudentChallengeScreen} />
       <RootStack.Screen name="Faq" component={FaqScreen} />
       <RootStack.Screen name="Parq" component={ParqScreen} />
       <RootStack.Screen name="Faturas" component={StudentOwnSubscriptionScreen} />
+      {/* <<<--- NOVA TELA: Evolução/Dashboard do Aluno --->>> */}
+      <RootStack.Screen name="StudentEvolution" component={StudentEvolutionScreen} />
+      {/* <<<--- Histórico de Feedbacks acessível da Home --->>> */}
+      <RootStack.Screen name="WorkoutFeedbackHistory" component={WorkoutFeedbackHistoryScreen} />
     </RootStack.Navigator>
   );
 }
@@ -132,6 +150,8 @@ function WorkoutsStack() {
       <RootStack.Screen name="ActiveWorkout" component={ActiveWorkoutScreen} />
       <RootStack.Screen name="UploadVideo" component={UploadVideoScreen} />
       <RootStack.Screen name="VideoPlayer" component={VideoPlayerScreen} />
+      {/* <<<--- Histórico de Feedbacks do aluno --->>> */}
+      <RootStack.Screen name="WorkoutFeedbackHistory" component={WorkoutFeedbackHistoryScreen} />
     </RootStack.Navigator>
   );
 }
@@ -146,8 +166,9 @@ function ClientChatStack() {
 }
 
 function MainTabs() {
+  const tabOptions = useTabScreenOptions();
   return (
-    <Tab.Navigator screenOptions={tabScreenOptions}>
+    <Tab.Navigator screenOptions={tabOptions}>
       <Tab.Screen
         name="Home"
         component={HomeStack}
@@ -177,7 +198,7 @@ function MainTabs() {
 
 // ---------- Personal ----------
 
-// <<<--- 4. STACK DO DASHBOARD DO PERSONAL CRIADO AQUI --->>>
+// <<<--- 4. STACK DO DASHBOARD DO PERSONAL --->>>
 function PersonalHomeStack() {
   return (
     <PersonalHomeStackNav.Navigator screenOptions={{ headerShown: false }}>
@@ -185,17 +206,7 @@ function PersonalHomeStack() {
       <PersonalHomeStackNav.Screen name="NotificationsScreen" component={NotificationsScreen} />
       <PersonalHomeStackNav.Screen name="Challenges" component={ChallengesScreen} />
       <PersonalHomeStackNav.Screen name="Faq" component={FaqScreen} />
-      <PersonalHomeStackNav.Screen name="PersonalFinancialScreen" component={PersonalFinancialScreen} />
     </PersonalHomeStackNav.Navigator>
-  );
-}
-
-function PersonalProfileStack() {
-  return (
-    <PersonalProfileStackNav.Navigator screenOptions={{ headerShown: false }}>
-      <PersonalProfileStackNav.Screen name="PersonalProfileMain" component={PersonalProfileScreen} />
-      <PersonalProfileStackNav.Screen name="PersonalFinancialScreen" component={PersonalFinancialScreen} />
-    </PersonalProfileStackNav.Navigator>
   );
 }
 
@@ -231,8 +242,9 @@ function PersonalChatStack() {
 }
 
 function PersonalTabs() {
+  const tabOptions = useTabScreenOptions();
   return (
-    <PersonalTab.Navigator screenOptions={tabScreenOptions}>
+    <PersonalTab.Navigator screenOptions={tabOptions}>
       <PersonalTab.Screen
         name="PersonalDashboard"
         component={PersonalHomeStack} // <<<--- 5. ALTERADO DE PersonalDashboardScreen PARA PersonalHomeStack --->>>
@@ -253,9 +265,8 @@ function PersonalTabs() {
       />
       <PersonalTab.Screen
         name="PersonalProfile"
-        component={PersonalProfileStack}
+        component={PersonalProfileScreen}
         options={{ tabBarLabel: 'Perfil', tabBarIcon: ({ color }) => <Feather name="user" size={22} color={color} /> }}
-        listeners={resetToRootOnTabPress('PersonalProfileMain')}
       />
     </PersonalTab.Navigator>
   );
@@ -264,8 +275,9 @@ function PersonalTabs() {
 // ---------- Admin ----------
 
 function AdminTabs() {
+  const tabOptions = useTabScreenOptions();
   return (
-    <AdminTab.Navigator screenOptions={tabScreenOptions}>
+    <AdminTab.Navigator screenOptions={tabOptions}>
       <AdminTab.Screen
         name="AdminDashboard"
         component={AdminDashboardScreen}
@@ -339,15 +351,7 @@ export default function AppNavigator() {
   } else if (profile.role === 'personal') {
     content = <PersonalTabs />;
   } else {
-    // Verifica bloqueio de acesso do aluno (cliente)
-    const accessBlocked = profile.access_blocked;
-    const accessExpired = profile.access_expires_at && new Date(profile.access_expires_at) < new Date();
-    const semAcesso = !profile.access_expires_at; // nunca teve pagamento confirmado
-    if (accessBlocked || accessExpired || semAcesso) {
-      content = <AccessBlockedScreen />;
-    } else {
-      content = <MainTabs />;
-    }
+    content = <MainTabs />;
   }
 
   return <NavigationContainer>{content}</NavigationContainer>;
