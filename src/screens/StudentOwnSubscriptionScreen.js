@@ -7,6 +7,7 @@ import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';;
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 function monthLabel(dateStr) {
   if (!dateStr) return '-';
@@ -243,29 +244,29 @@ export default function StudentOwnSubscriptionScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: 60 },
-  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginLeft: -4 },
-  back: { color: colors.text, fontSize: 15, marginLeft: 2 },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 14 },
+  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: screenPaddingTop },
+  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: vs(16), marginLeft: -4 },
+  back: { color: colors.text, fontSize: fs(13), marginLeft: 2 },
+  title: { fontSize: fs(20), fontWeight: '800', color: colors.text, marginBottom: vs(14) },
 
   alertBanner: {
     flexDirection: 'row',
     gap: 12,
     borderRadius: radius.md,
     padding: 14,
-    marginBottom: 14,
+    marginBottom: vs(14),
     alignItems: 'flex-start',
   },
   alertDanger: { backgroundColor: 'rgba(255,90,122,0.08)', borderWidth: 1, borderColor: 'rgba(255,90,122,0.3)' },
   alertWarnStrong: { backgroundColor: 'rgba(255,182,72,0.1)', borderWidth: 1, borderColor: 'rgba(255,182,72,0.35)' },
   alertWarnLight: { backgroundColor: 'rgba(255,182,72,0.07)', borderWidth: 1, borderColor: 'rgba(255,182,72,0.2)' },
   alertIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  alertTitle: { fontSize: 13, fontWeight: '700', marginBottom: 3 },
-  alertText: { fontSize: 12, lineHeight: 17 },
-  alertAction: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
-  alertActionText: { fontSize: 12, fontWeight: '600' },
+  alertTitle: { fontSize: fs(11), fontWeight: '700', marginBottom: vs(3) },
+  alertText: { fontSize: fs(10), lineHeight: 17 },
+  alertAction: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: vs(8) },
+  alertActionText: { fontSize: fs(10), fontWeight: '600' },
 
-  summaryGrid: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  summaryGrid: { flexDirection: 'row', gap: 10, marginBottom: vs(12) },
   summaryCard: {
     flex: 1,
     backgroundColor: colors.surface,
@@ -274,18 +275,18 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: 12,
   },
-  summaryLabel: { color: colors.textDim, fontSize: 11, marginBottom: 4 },
-  summaryValue: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  summaryLabel: { color: colors.textDim, fontSize: fs(9), marginBottom: vs(4) },
+  summaryValue: { color: colors.text, fontSize: fs(13), fontWeight: '700' },
 
   planBox: {
     backgroundColor: colors.accentGlow,
     borderRadius: radius.md,
     padding: 14,
-    marginBottom: 12,
+    marginBottom: vs(12),
   },
   planRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  planLabel: { color: colors.accent, fontSize: 12.5, fontWeight: '600' },
-  planValue: { color: colors.accent, fontSize: 14, fontWeight: '800' },
+  planLabel: { color: colors.accent, fontSize: fs(10.5), fontWeight: '600' },
+  planValue: { color: colors.accent, fontSize: fs(12), fontWeight: '800' },
 
   pixBox: {
     backgroundColor: colors.surface,
@@ -293,9 +294,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     padding: 14,
-    marginBottom: 12,
+    marginBottom: vs(12),
   },
-  pixTitle: { color: colors.textDim, fontSize: 12, marginBottom: 8 },
+  pixTitle: { color: colors.textDim, fontSize: fs(10), marginBottom: vs(8) },
   pixRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -306,10 +307,10 @@ const styles = StyleSheet.create({
     padding: 10,
     gap: 8,
   },
-  pixKey: { color: colors.textDim, fontSize: 13, flex: 1 },
+  pixKey: { color: colors.textDim, fontSize: fs(11), flex: 1 },
   pixCopyBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  pixCopyText: { color: colors.accent, fontSize: 12, fontWeight: '600' },
-  pixNote: { color: colors.textFaint, fontSize: 11, marginTop: 8 },
+  pixCopyText: { color: colors.accent, fontSize: fs(10), fontWeight: '600' },
+  pixNote: { color: colors.textFaint, fontSize: fs(9), marginTop: vs(8) },
 
   contactCard: {
     flexDirection: 'row',
@@ -320,7 +321,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     padding: 14,
-    marginBottom: 16,
+    marginBottom: vs(16),
   },
   contactIcon: {
     width: 36,
@@ -330,18 +331,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  contactTitle: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  contactSub: { color: colors.textDim, fontSize: 12, marginTop: 2 },
+  contactTitle: { color: colors.text, fontSize: fs(12), fontWeight: '600' },
+  contactSub: { color: colors.textDim, fontSize: fs(10), marginTop: vs(2) },
 
-  historyTitle: { color: colors.textDim, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', marginBottom: 8 },
-  empty: { color: colors.textDim, textAlign: 'center', marginTop: 40, fontSize: 14 },
+  historyTitle: { color: colors.textDim, fontSize: fs(10), fontWeight: '700', textTransform: 'uppercase', marginBottom: vs(8) },
+  empty: { color: colors.textDim, textAlign: 'center', marginTop: vs(40), fontSize: fs(12) },
   card: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
     padding: 14,
-    marginBottom: 8,
+    marginBottom: vs(8),
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -351,9 +352,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentGlow,
     alignItems: 'center', justifyContent: 'center',
   },
-  cardTitle: { color: colors.text, fontSize: 14, fontWeight: '700', textTransform: 'capitalize' },
-  cardSubtitle: { color: colors.textDim, fontSize: 12, marginTop: 2 },
-  cardMeta: { color: colors.textFaint, fontSize: 11, marginTop: 2 },
-  badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.pill },
-  badgeText: { fontSize: 11, fontWeight: '700' },
+  cardTitle: { color: colors.text, fontSize: fs(12), fontWeight: '700', textTransform: 'capitalize' },
+  cardSubtitle: { color: colors.textDim, fontSize: fs(10), marginTop: vs(2) },
+  cardMeta: { color: colors.textFaint, fontSize: fs(9), marginTop: vs(2) },
+  badge: { paddingHorizontal: s(10), paddingVertical: vs(5), borderRadius: radius.pill },
+  badgeText: { fontSize: fs(9), fontWeight: '700' },
 });

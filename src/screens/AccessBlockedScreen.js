@@ -9,6 +9,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 import StudentOwnSubscriptionScreen from './StudentOwnSubscriptionScreen';
 
 const BlockedStack = createNativeStackNavigator();
@@ -155,22 +156,22 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,90,122,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
+    marginBottom: vs(24),
   },
 
   heading: {
-    fontSize: 26,
+    fontSize: fs(24),
     fontWeight: '800',
     color: colors.text,
     textAlign: 'center',
-    marginBottom: 10,
+    marginBottom: vs(10),
   },
   reason: {
-    fontSize: 14,
+    fontSize: fs(12),
     color: colors.textDim,
     textAlign: 'center',
     lineHeight: 20,
-    marginBottom: 20,
+    marginBottom: vs(20),
   },
 
   infoBox: {
@@ -181,12 +182,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.sm,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    marginBottom: 8,
+    paddingVertical: vs(10),
+    paddingHorizontal: s(14),
+    marginBottom: vs(8),
     alignSelf: 'stretch',
   },
-  infoText: { color: colors.textDim, fontSize: 13 },
+  infoText: { color: colors.textDim, fontSize: fs(11) },
 
   pixCard: {
     backgroundColor: colors.surface,
@@ -194,11 +195,11 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     padding: 14,
-    marginTop: 4,
-    marginBottom: 4,
+    marginTop: vs(4),
+    marginBottom: vs(4),
     alignSelf: 'stretch',
   },
-  pixLabel: { color: colors.textDim, fontSize: 12, marginBottom: 8 },
+  pixLabel: { color: colors.textDim, fontSize: fs(10), marginBottom: vs(8) },
   pixRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -209,19 +210,19 @@ const styles = StyleSheet.create({
     padding: 10,
     gap: 8,
   },
-  pixKey: { color: colors.textDim, fontSize: 13, flex: 1 },
+  pixKey: { color: colors.textDim, fontSize: fs(11), flex: 1 },
   pixCopyBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  pixCopyText: { color: colors.accent, fontSize: 12, fontWeight: '600' },
-  pixNote: { color: colors.textFaint, fontSize: 11, marginTop: 8 },
+  pixCopyText: { color: colors.accent, fontSize: fs(10), fontWeight: '600' },
+  pixNote: { color: colors.textFaint, fontSize: fs(9), marginTop: vs(8) },
 
   orientacao: {
-    fontSize: 12,
+    fontSize: fs(10),
     color: colors.textFaint,
     textAlign: 'center',
     lineHeight: 18,
-    marginTop: 16,
-    marginBottom: 28,
-    paddingHorizontal: 8,
+    marginTop: vs(16),
+    marginBottom: vs(28),
+    paddingHorizontal: s(8),
   },
 
   btnFaturas: {
@@ -231,14 +232,14 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: colors.accent,
     borderRadius: radius.md,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
+    paddingVertical: vs(14),
+    paddingHorizontal: s(32),
     alignSelf: 'stretch',
-    marginBottom: 12,
+    marginBottom: vs(12),
   },
   btnFaturasText: {
     color: '#04170F',
-    fontSize: 16,
+    fontSize: fs(14),
     fontWeight: '800',
   },
 
@@ -246,7 +247,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingVertical: 10,
+    paddingVertical: vs(10),
   },
-  btnSairText: { color: colors.textDim, fontSize: 14 },
+  btnSairText: { color: colors.textDim, fontSize: fs(12) },
 });

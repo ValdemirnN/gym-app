@@ -11,6 +11,7 @@ import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 import { getPendingCount, onQueueChange } from '../lib/syncManager';
 
 function diasDesde(dateStr) {
@@ -197,33 +198,33 @@ export default function WorkoutsScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, paddingTop: 56 },
+  container: { flex: 1, backgroundColor: colors.bg, paddingTop: screenPaddingTop },
 
   // ── Topbar
   topbar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 18,
-    paddingBottom: 4,
+    paddingHorizontal: s(18),
+    paddingBottom: vs(4),
   },
   eyebrow: {
-    fontSize: 10.5,
+    fontSize: fs(9),
     fontWeight: '700',
     color: colors.textDim2,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
-    marginBottom: 2,
+    marginBottom: vs(2),
   },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text },
+  title: { fontSize: fs(20), fontWeight: '800', color: colors.text },
 
   // ── Tabs
   tabsRow: {
     flexDirection: 'row',
     gap: 8,
     marginHorizontal: 18,
-    marginTop: 16,
-    marginBottom: 4,
+    marginTop: vs(16),
+    marginBottom: vs(4),
     backgroundColor: colors.surface,
     borderRadius: 14,
     padding: 4,
@@ -233,11 +234,11 @@ const styles = StyleSheet.create({
   tabButton: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: vs(12),
     borderRadius: 12,
   },
   tabButtonActive: { backgroundColor: colors.accent },
-  tabText: { color: colors.textDim, fontSize: 13, fontWeight: '700' },
+  tabText: { color: colors.textDim, fontSize: fs(11), fontWeight: '700' },
   tabTextActive: { color: '#08110A' },
 
   // ── Sync banner
@@ -246,27 +247,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.accentGlow,
     borderRadius: radius.md,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingVertical: vs(10),
+    paddingHorizontal: s(12),
     marginHorizontal: 18,
-    marginTop: 14,
+    marginTop: vs(14),
   },
-  syncBannerText: { color: colors.accent, fontSize: 12, marginLeft: 8, flex: 1, lineHeight: 16 },
+  syncBannerText: { color: colors.accent, fontSize: fs(10), marginLeft: 8, flex: 1, lineHeight: 16 },
 
   empty: {
     color: colors.textDim,
     textAlign: 'center',
-    marginTop: 40,
-    fontSize: 14,
+    marginTop: vs(40),
+    fontSize: fs(12),
     lineHeight: 20,
-    paddingHorizontal: 4,
+    paddingHorizontal: s(4),
   },
 
   // ── Blocks list
   blocksList: {
-    paddingHorizontal: 18,
-    paddingTop: 20,
-    paddingBottom: 40,
+    paddingHorizontal: s(18),
+    paddingTop: vs(20),
+    paddingBottom: vs(40),
   },
   blockCard: {
     backgroundColor: colors.surface,
@@ -274,7 +275,7 @@ const styles = StyleSheet.create({
     borderColor: colors.line ?? colors.border,
     borderRadius: radius.lg,
     padding: 16,
-    marginBottom: 12,
+    marginBottom: vs(12),
     overflow: 'hidden',
   },
   blockCardContent: {
@@ -296,30 +297,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    paddingHorizontal: s(9),
+    paddingVertical: vs(4),
     borderRadius: 100,
     alignSelf: 'flex-start',
-    marginBottom: 6,
+    marginBottom: vs(6),
   },
   statusPillAndamento: { backgroundColor: colors.amberGlow ?? 'rgba(253,180,78,0.14)' },
   statusPillConcluido: { backgroundColor: 'rgba(138,151,166,0.14)' },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusText: { fontSize: 10, fontWeight: '700' },
+  statusText: { fontSize: fs(9), fontWeight: '700' },
   blockTitle: {
-    fontSize: 15,
+    fontSize: fs(13),
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 8,
+    marginBottom: vs(8),
   },
   blockMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingTop: 10,
+    paddingTop: vs(10),
     borderTopWidth: 1,
     borderTopColor: colors.line ?? colors.border,
   },
-  blockMetaText: { fontSize: 11.5, color: colors.textDim },
+  blockMetaText: { fontSize: fs(9.5), color: colors.textDim },
   metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: colors.textDim2 },
 });

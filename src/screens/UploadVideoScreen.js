@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, FlatList } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { File } from 'expo-file-system';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 // fetch(uri).blob() corrompe/trunca vídeos locais no React Native/Expo.
 // Lemos os bytes reais do arquivo com a API nova do expo-file-system.
@@ -82,12 +82,8 @@ export default function UploadVideoScreen({ navigation, route }) {
     setReplacingId(video.id);
     try {
       const uri = result.assets[0].uri;
-      const bytes = await new File(uri).bytes();
       const contentType = getVideoContentType(uri);
-      const { error: uploadError } = await supabase.storage
-        .from('exercise-videos')
-        .upload(video.storage_path, bytes, { contentType, upsert: true });
-      if (uploadError) throw uploadError;
+      await uploadWithFetch(video.storage_path, uri, contentType, true);
       Alert.alert('Pronto!', 'Vídeo substituído com sucesso.');
     } catch (e) {
       Alert.alert('Erro ao substituir vídeo', e.message);
@@ -111,6 +107,33 @@ export default function UploadVideoScreen({ navigation, route }) {
     }
   };
 
+  const uploadWithFetch = async (storagePath, uri, contentType, upsert = false) => {
+    const {
+      data: { session: authSession },
+    } = await supabase.auth.getSession();
+    const token = authSession?.access_token;
+    const supabaseUrl = supabase.supabaseUrl || supabase.storageUrl?.replace('/storage/v1', '');
+
+    const url = `${supabaseUrl}/storage/v1/object/exercise-videos/${storagePath}`;
+    const method = upsert ? 'PUT' : 'POST';
+
+    const response = await fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': contentType,
+        'x-upsert': upsert ? 'true' : 'false',
+      },
+      body: { uri },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `Upload falhou com status ${response.status}`);
+    }
+    return await response.json();
+  };
+
   const handleUpload = async () => {
     if (!name.trim()) {
       Alert.alert('Atenção', 'Dê um nome pro vídeo (ex: Supino reto).');
@@ -122,16 +145,11 @@ export default function UploadVideoScreen({ navigation, route }) {
     }
     setUploading(true);
     try {
-      const bytes = await new File(videoUri).bytes();
       const contentType = getVideoContentType(videoUri);
       const ext = (videoUri.split('.').pop() || 'mp4').split('?')[0];
       const path = `${session.user.id}/${Date.now()}.${ext}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('exercise-videos')
-        .upload(path, bytes, { contentType });
-
-      if (uploadError) throw uploadError;
+      await uploadWithFetch(path, videoUri, contentType, false);
 
       const { data: inserted, error: insertError } = await supabase
         .from('exercise_videos')
@@ -229,11 +247,11 @@ export default function UploadVideoScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: 60 },
-  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginLeft: -4 },
-  back: { color: colors.text, fontSize: 15, marginLeft: 2 },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 6 },
-  subtitle: { color: colors.textDim, fontSize: 13, marginBottom: 20, lineHeight: 18 },
+  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: screenPaddingTop },
+  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: vs(12), marginLeft: -4 },
+  back: { color: colors.text, fontSize: fs(13), marginLeft: 2 },
+  title: { fontSize: fs(20), fontWeight: '800', color: colors.text, marginBottom: vs(6) },
+  subtitle: { color: colors.textDim, fontSize: fs(11), marginBottom: vs(20), lineHeight: 18 },
   input: {
     backgroundColor: colors.surface,
     color: colors.text,
@@ -241,8 +259,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.sm,
     padding: 14,
-    marginBottom: 16,
-    fontSize: 16,
+    marginBottom: vs(16),
+    fontSize: fs(14),
   },
   pickButton: {
     flexDirection: 'row',
@@ -252,15 +270,15 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: vs(16),
     borderWidth: 1,
     borderColor: colors.border,
   },
   pickButtonText: { color: colors.text, fontWeight: '600' },
   saveButton: { backgroundColor: colors.accent, borderRadius: radius.sm, padding: 16, alignItems: 'center' },
-  saveButtonText: { color: '#04170F', fontWeight: '700', fontSize: 16 },
-  listTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginTop: 28, marginBottom: 10 },
-  empty: { color: colors.textDim, textAlign: 'center', marginTop: 20, fontSize: 14 },
+  saveButtonText: { color: '#04170F', fontWeight: '700', fontSize: fs(14) },
+  listTitle: { color: colors.text, fontSize: fs(14), fontWeight: '700', marginTop: vs(28), marginBottom: vs(10) },
+  empty: { color: colors.textDim, textAlign: 'center', marginTop: vs(20), fontSize: fs(12) },
   videoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -270,7 +288,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     padding: 14,
-    marginBottom: 10,
+    marginBottom: vs(10),
   },
   videoIcon: {
     width: 34,
@@ -280,8 +298,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  videoName: { color: colors.text, fontSize: 14, flex: 1 },
+  videoName: { color: colors.text, fontSize: fs(12), flex: 1 },
   videoActions: { flexDirection: 'row', gap: 16 },
-  replaceText: { color: colors.accent, fontWeight: '600', marginRight: 16, fontSize: 13 },
-  deleteText: { color: colors.red, fontWeight: '600', fontSize: 13 },
+  replaceText: { color: colors.accent, fontWeight: '600', marginRight: 16, fontSize: fs(11) },
+  deleteText: { color: colors.red, fontWeight: '600', fontSize: fs(11) },
 });

@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 const STATUS_LABEL = {
   aprovado: { text: 'Ativo', color: colors.accent, glow: colors.accentGlow },
@@ -68,27 +69,27 @@ export default function StudentRegistrationScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginLeft: -4 },
-  back: { color: colors.text, fontSize: 15, marginLeft: 2 },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 16 },
-  badge: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 5, borderRadius: radius.pill },
-  badgeText: { fontSize: 12, fontWeight: '700' },
+  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: vs(16), marginLeft: -4 },
+  back: { color: colors.text, fontSize: fs(13), marginLeft: 2 },
+  title: { fontSize: fs(20), fontWeight: '800', color: colors.text, marginBottom: vs(16) },
+  badge: { alignSelf: 'flex-start', paddingHorizontal: s(12), paddingVertical: vs(5), borderRadius: radius.pill },
+  badgeText: { fontSize: fs(10), fontWeight: '700' },
   fieldCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    paddingVertical: 13,
-    paddingHorizontal: 15,
-    marginBottom: 10,
+    paddingVertical: vs(13),
+    paddingHorizontal: s(15),
+    marginBottom: vs(10),
   },
   fieldLabel: {
-    fontSize: 10.5,
+    fontSize: fs(9),
     color: colors.textDim2,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     fontWeight: '700',
-    marginBottom: 4,
+    marginBottom: vs(4),
   },
-  fieldValue: { fontSize: 14.5, color: colors.text, fontWeight: '600' },
+  fieldValue: { fontSize: fs(12.5), color: colors.text, fontWeight: '600' },
 });

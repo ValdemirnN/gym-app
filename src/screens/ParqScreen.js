@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 const QUESTIONS = [
   { key: 'q1', text: 'Algum médico já disse que você possui um problema cardíaco e recomendou que você só praticasse atividade física sob supervisão médica?' },
@@ -155,54 +156,54 @@ export default function ParqScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: 60 },
-  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, marginLeft: -4 },
-  back: { color: colors.text, fontSize: 15, marginLeft: 2 },
-  title: { fontSize: 20, fontWeight: '800', color: colors.text, marginBottom: 8 },
-  subtitle: { color: colors.textDim, fontSize: 12.5, lineHeight: 18, marginBottom: 14 },
+  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: screenPaddingTop },
+  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: vs(10), marginLeft: -4 },
+  back: { color: colors.text, fontSize: fs(13), marginLeft: 2 },
+  title: { fontSize: fs(18), fontWeight: '800', color: colors.text, marginBottom: vs(8) },
+  subtitle: { color: colors.textDim, fontSize: fs(10.5), lineHeight: 18, marginBottom: vs(14) },
   existingCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.accentGlow,
     borderRadius: radius.md,
     padding: 12,
-    marginBottom: 16,
+    marginBottom: vs(16),
   },
-  existingText: { color: colors.accent, fontSize: 12, flex: 1, lineHeight: 17 },
-  sectionTitle: { color: colors.textDim, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', marginBottom: 10, marginTop: 6 },
+  existingText: { color: colors.accent, fontSize: fs(10), flex: 1, lineHeight: 17 },
+  sectionTitle: { color: colors.textDim, fontSize: fs(10), fontWeight: '700', textTransform: 'uppercase', marginBottom: vs(10), marginTop: vs(6) },
   questionCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
     padding: 14,
-    marginBottom: 10,
+    marginBottom: vs(10),
   },
-  questionText: { color: colors.text, fontSize: 13.5, lineHeight: 19, marginBottom: 12 },
+  questionText: { color: colors.text, fontSize: fs(11.5), lineHeight: 19, marginBottom: vs(12) },
   answerRow: { flexDirection: 'row', gap: 10 },
   answerButton: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 9,
+    paddingVertical: vs(9),
     borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.border,
   },
   answerButtonActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  answerText: { color: colors.textDim, fontSize: 13, fontWeight: '600' },
+  answerText: { color: colors.textDim, fontSize: fs(11), fontWeight: '600' },
   answerTextActive: { color: '#04170F' },
-  signatureHint: { color: colors.textDim2, fontSize: 11.5, marginBottom: 8, marginTop: -6 },
+  signatureHint: { color: colors.textDim2, fontSize: fs(9.5), marginBottom: vs(8), marginTop: -6 },
   input: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.sm,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingHorizontal: s(12),
+    paddingVertical: vs(12),
     color: colors.text,
-    fontSize: 14,
-    marginBottom: 20,
+    fontSize: fs(12),
+    marginBottom: vs(20),
   },
-  submitButton: { backgroundColor: colors.accent, borderRadius: radius.sm, paddingVertical: 14, alignItems: 'center' },
-  submitButtonText: { color: '#04170F', fontWeight: '700', fontSize: 14.5 },
+  submitButton: { backgroundColor: colors.accent, borderRadius: radius.sm, paddingVertical: vs(14), alignItems: 'center' },
+  submitButtonText: { color: '#04170F', fontWeight: '700', fontSize: fs(12.5) },
 });

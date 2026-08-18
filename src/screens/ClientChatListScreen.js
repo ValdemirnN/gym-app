@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import Avatar from '../components/Avatar';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 // Tela de conversas do aluno: mostra o personal dele em destaque e, logo
 // abaixo, os outros personals aprovados no app — caso o dele não esteja
@@ -153,14 +154,14 @@ export default function ClientChatListScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 20, paddingTop: 60 },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 16 },
-  empty: { color: colors.textDim, textAlign: 'center', marginTop: 40, fontSize: 14, lineHeight: 20 },
+  container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: s(20), paddingTop: screenPaddingTop },
+  title: { fontSize: fs(20), fontWeight: '800', color: colors.text, marginBottom: vs(16) },
+  empty: { color: colors.textDim, textAlign: 'center', marginTop: vs(40), fontSize: fs(12), lineHeight: 20 },
   sectionHeader: {
     color: colors.textDim,
-    fontSize: 11.5,
-    marginTop: 8,
-    marginBottom: 8,
+    fontSize: fs(9.5),
+    marginTop: vs(8),
+    marginBottom: vs(8),
     textTransform: 'uppercase',
     fontWeight: '700',
     letterSpacing: 0.6,
@@ -171,7 +172,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md + 2,
     padding: 12,
-    marginBottom: 10,
+    marginBottom: vs(10),
     flexDirection: 'row',
     alignItems: 'center',
     position: 'relative',
@@ -186,24 +187,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
   },
   nameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
-  cardTitle: { color: colors.text, fontSize: 14.5, fontWeight: '700' },
-  cardPreview: { color: colors.textDim, fontSize: 12.5, marginTop: 3 },
+  cardTitle: { color: colors.text, fontSize: fs(12.5), fontWeight: '700' },
+  cardPreview: { color: colors.textDim, fontSize: fs(10.5), marginTop: vs(3) },
   primaryBadge: {
     backgroundColor: colors.accentGlow,
     borderRadius: radius.pill,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: s(8),
+    paddingVertical: vs(2),
   },
-  primaryBadgeText: { color: colors.accent, fontSize: 10, fontWeight: '700' },
+  primaryBadgeText: { color: colors.accent, fontSize: fs(9), fontWeight: '700' },
   badge: {
     backgroundColor: colors.accent,
     borderRadius: 12,
     minWidth: 24,
     height: 24,
-    paddingHorizontal: 6,
+    paddingHorizontal: s(6),
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 8,
   },
-  badgeText: { color: '#04170F', fontSize: 12, fontWeight: 'bold' },
+  badgeText: { color: '#04170F', fontSize: fs(10), fontWeight: 'bold' },
 });

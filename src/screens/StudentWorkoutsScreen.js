@@ -12,6 +12,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 const DAY_ORDER = ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo', null];
 const DAY_LABEL = {
@@ -65,7 +66,6 @@ export default function StudentWorkoutsScreen({ route, navigation }) {
 
   const load = useCallback(async () => {
     try {
-      // Carrega blocos de treino
       const { data } = await supabase
         .from('workouts')
         .select('*')
@@ -73,26 +73,39 @@ export default function StudentWorkoutsScreen({ route, navigation }) {
         .order('created_at', { ascending: false });
 
       if (data) {
-        // Agrupa por bloco
+        // Agrupa pela mesma chave que a WorkoutsScreen do aluno usa:
+        // period_start + period_end. Treinos sem período = bloco único "sem_periodo".
+        // Isso garante que personal e aluno vejam exatamente os mesmos grupos.
         const grouped = {};
         data.forEach((w) => {
-          if (!grouped[w.block_id || 'default']) {
-            grouped[w.block_id || 'default'] = {
-              id: w.block_id || 'default',
-              name: w.block_name || 'Bloco padrão',
-              goal: w.goal || 'Treino',
-              level: w.level || 'Intermediário',
-              status: 'andamento',
+          const key = w.period_start ? `${w.period_start}__${w.period_end}` : 'sem_periodo';
+          if (!grouped[key]) {
+            grouped[key] = {
+              id: key,
+              goal: w.goal || '',
+              level: w.level || '',
+              period_start: w.period_start,
+              period_end: w.period_end,
               created_at: w.created_at,
               workouts: [],
             };
           }
-          grouped[w.block_id || 'default'].workouts.push(w);
+          // Usa o goal/level do registro mais recente do grupo (igual à WorkoutsScreen)
+          if (new Date(w.created_at) > new Date(grouped[key].created_at)) {
+            grouped[key].goal  = w.goal  || grouped[key].goal;
+            grouped[key].level = w.level || grouped[key].level;
+            grouped[key].created_at = w.created_at;
+          }
+          grouped[key].workouts.push(w);
         });
 
-        const freshBlocks = Object.values(grouped);
+        const freshBlocks = Object.values(grouped).sort(
+          (a, b) => new Date(b.created_at) - new Date(a.created_at)
+        );
         setBlocks(freshBlocks);
-        setActiveBlock((prev) => (prev ? freshBlocks.find((b) => b.id === prev.id) || null : prev));
+        setActiveBlock((prev) =>
+          prev ? freshBlocks.find((b) => b.id === prev.id) || null : prev
+        );
       }
     } catch (error) {
       console.error('Erro ao carregar treinos:', error);
@@ -120,6 +133,35 @@ export default function StudentWorkoutsScreen({ route, navigation }) {
         text: 'Remover',
         style: 'destructive',
         onPress: async () => {
+          // Cascata: substitutos → exercises → logs → workout
+          const { data: weRows } = await supabase
+            .from('workout_exercises')
+            .select('id')
+            .eq('workout_id', workout.id);
+          const weIds = (weRows || []).map((r) => r.id);
+
+          if (weIds.length > 0) {
+            const { error: subsErr } = await supabase
+              .from('workout_exercise_substitutes')
+              .delete()
+              .in('workout_exercise_id', weIds);
+            if (subsErr) {
+              Alert.alert('Erro ao apagar substitutos', subsErr.message);
+              return;
+            }
+          }
+
+          const { error: weErr } = await supabase
+            .from('workout_exercises')
+            .delete()
+            .eq('workout_id', workout.id);
+          if (weErr) {
+            Alert.alert('Erro ao apagar exercícios', weErr.message);
+            return;
+          }
+
+          await supabase.from('workout_logs').delete().eq('workout_id', workout.id);
+
           const { error } = await supabase.from('workouts').delete().eq('id', workout.id);
           if (error) {
             Alert.alert('Erro', error.message);
@@ -129,6 +171,79 @@ export default function StudentWorkoutsScreen({ route, navigation }) {
         },
       },
     ]);
+  };
+
+  // Apaga todos os treinos de um bloco inteiro de uma vez.
+  const handleDeleteBlock = (block) => {
+    const count = block.workouts.length;
+    const label = [block.goal, block.level].filter(Boolean).join(' · ') || 'este bloco';
+    Alert.alert(
+      'Apagar grupo de treinos',
+      `Isso vai remover "${label}" e todos os ${count} treino${count !== 1 ? 's' : ''} dentro dele. Essa ação não pode ser desfeita.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Apagar tudo',
+          style: 'destructive',
+          onPress: async () => {
+            const workoutIds = block.workouts.map((w) => w.id);
+
+            // 1. Buscar os IDs dos workout_exercises para deletar os substitutos
+            const { data: weRows, error: weSelectErr } = await supabase
+              .from('workout_exercises')
+              .select('id')
+              .in('workout_id', workoutIds);
+
+            if (weSelectErr) {
+              Alert.alert('Erro', weSelectErr.message);
+              return;
+            }
+
+            const weIds = (weRows || []).map((r) => r.id);
+
+            // 2. Deletar substitutos (precisa vir antes dos workout_exercises por FK)
+            if (weIds.length > 0) {
+              const { error: subsErr } = await supabase
+                .from('workout_exercise_substitutes')
+                .delete()
+                .in('workout_exercise_id', weIds);
+              if (subsErr) {
+                Alert.alert('Erro ao apagar substitutos', subsErr.message);
+                return;
+              }
+            }
+
+            // 3. Deletar workout_exercises
+            const { error: weErr } = await supabase
+              .from('workout_exercises')
+              .delete()
+              .in('workout_id', workoutIds);
+            if (weErr) {
+              Alert.alert('Erro ao apagar exercícios', weErr.message);
+              return;
+            }
+
+            // 4. Deletar workout_logs (histórico)
+            await supabase
+              .from('workout_logs')
+              .delete()
+              .in('workout_id', workoutIds);
+
+            // 5. Por último, deletar os workouts
+            const { error } = await supabase
+              .from('workouts')
+              .delete()
+              .in('id', workoutIds);
+
+            if (error) {
+              Alert.alert('Erro ao apagar grupo', error.message);
+              return;
+            }
+            load();
+          },
+        },
+      ]
+    );
   };
 
   const diasDesde = (dateStr) => {
@@ -200,6 +315,18 @@ export default function StudentWorkoutsScreen({ route, navigation }) {
                 onPress={() => openBlockDetail(block)}
                 activeOpacity={0.8}
               >
+                {/* Botão de apagar o bloco inteiro */}
+                <TouchableOpacity
+                  style={styles.deleteBlockBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handleDeleteBlock(block);
+                  }}
+                >
+                  <Feather name="trash-2" size={14} color={colors.red} />
+                </TouchableOpacity>
+
                 <View style={styles.blockCardContent}>
                   <View style={styles.blockIcon}>
                     <Feather name="layers" size={18} color={colors.accent} />
@@ -212,10 +339,12 @@ export default function StudentWorkoutsScreen({ route, navigation }) {
                         <Text style={styles.statusText}>Em andamento</Text>
                       </View>
                     </View>
-                    <Text style={styles.blockTitle}>{block.goal} · {block.level}</Text>
+                    <Text style={styles.blockTitle}>
+                      {[block.goal, block.level].filter(Boolean).join(' · ') || 'Bloco de treinos'}
+                    </Text>
                     <View style={styles.blockMeta}>
                       <Text style={styles.blockMetaText}>
-                        {block.workouts.length} exercícios
+                        {block.workouts.length} treino{block.workouts.length !== 1 ? 's' : ''}
                       </Text>
                       <View style={styles.metaDot} />
                       <Text style={styles.blockMetaText}>criado {diasDesde(block.created_at)}</Text>
@@ -372,39 +501,39 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
-    paddingHorizontal: 18,
-    paddingTop: 60,
+    paddingHorizontal: s(18),
+    paddingTop: screenPaddingTop,
   },
 
   // Header
   backRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: vs(16),
     marginLeft: -4,
   },
   back: {
     color: colors.text,
-    fontSize: 15,
+    fontSize: fs(13),
     marginLeft: 8,
     fontWeight: '500',
   },
   eyebrow: {
-    fontSize: 10.5,
+    fontSize: fs(9),
     fontWeight: '700',
     color: colors.textDim2,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    marginBottom: 2,
+    marginBottom: vs(2),
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: vs(20),
   },
   title: {
-    fontSize: 22,
+    fontSize: fs(20),
     fontWeight: '800',
     color: colors.text,
   },
@@ -412,22 +541,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.accent,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: s(16),
+    paddingVertical: vs(10),
     borderRadius: radius.md - 4,
     gap: 6,
   },
   addButtonText: {
     color: '#08110A',
     fontWeight: '700',
-    fontSize: 13,
+    fontSize: fs(11),
   },
 
   // Tabs
   tabsContainer: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 20,
+    marginBottom: vs(20),
     backgroundColor: colors.surface,
     borderRadius: 14,
     padding: 4,
@@ -436,8 +565,8 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingVertical: vs(12),
+    paddingHorizontal: s(8),
     borderRadius: 14,
     alignItems: 'center',
   },
@@ -445,7 +574,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
   },
   tabText: {
-    fontSize: 13,
+    fontSize: fs(11),
     fontWeight: '700',
     color: colors.textDim,
   },
@@ -455,7 +584,7 @@ const styles = StyleSheet.create({
 
   // Blocks List
   blocksList: {
-    paddingBottom: 20,
+    paddingBottom: vs(20),
   },
   blockCard: {
     backgroundColor: colors.surface,
@@ -463,8 +592,20 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
     borderRadius: radius.lg,
     padding: 16,
-    marginBottom: 12,
+    marginBottom: vs(12),
     overflow: 'hidden',
+  },
+  deleteBlockBtn: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    zIndex: 10,
+    width: s(30),
+    height: s(30),
+    borderRadius: s(15),
+    backgroundColor: colors.redGlow,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   blockCardContent: {
     flexDirection: 'row',
@@ -483,15 +624,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   blockStatusRow: {
-    marginBottom: 6,
+    marginBottom: vs(6),
   },
   statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     backgroundColor: `${colors.amber}24`,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    paddingHorizontal: s(9),
+    paddingVertical: vs(4),
     borderRadius: 100,
     alignSelf: 'flex-start',
   },
@@ -502,26 +643,26 @@ const styles = StyleSheet.create({
     backgroundColor: colors.amber,
   },
   statusText: {
-    fontSize: 10,
+    fontSize: fs(9),
     fontWeight: '700',
     color: colors.amber,
   },
   blockTitle: {
-    fontSize: 15,
+    fontSize: fs(13),
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 8,
+    marginBottom: vs(8),
   },
   blockMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingTop: 10,
+    paddingTop: vs(10),
     borderTopWidth: 1,
     borderTopColor: colors.line,
   },
   blockMetaText: {
-    fontSize: 11.5,
+    fontSize: fs(9.5),
     color: colors.textDim,
   },
   metaDot: {
@@ -533,10 +674,10 @@ const styles = StyleSheet.create({
 
   // Days List
   daysList: {
-    paddingBottom: 20,
+    paddingBottom: vs(20),
   },
   sectionHeader: {
-    fontSize: 11.5,
+    fontSize: fs(9.5),
     fontWeight: '700',
     color: colors.textDim2,
     textTransform: 'uppercase',
@@ -546,20 +687,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 16,
-    marginBottom: 8,
+    marginTop: vs(16),
+    marginBottom: vs(8),
   },
   addWorkoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     backgroundColor: colors.accentGlow,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+    paddingVertical: vs(5),
+    paddingHorizontal: s(10),
     borderRadius: radius.pill,
   },
-  addWorkoutBtnText: { color: colors.accent, fontSize: 11, fontWeight: '700' },
-  emptyDay: { color: colors.textDim2, fontSize: 12.5, marginBottom: 10, fontStyle: 'italic' },
+  addWorkoutBtnText: { color: colors.accent, fontSize: fs(9), fontWeight: '700' },
+  emptyDay: { color: colors.textDim2, fontSize: fs(10.5), marginBottom: vs(10), fontStyle: 'italic' },
   removeWorkoutBtn: {
     width: 30,
     height: 30,
@@ -573,7 +714,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
     borderRadius: radius.lg,
-    marginBottom: 10,
+    marginBottom: vs(10),
     overflow: 'hidden',
   },
   dayCardContent: {
@@ -592,7 +733,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   dayBadgeText: {
-    fontSize: 10,
+    fontSize: fs(9),
     fontWeight: '700',
     color: colors.accent,
   },
@@ -609,14 +750,14 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   dayLabel: {
-    fontSize: 10.5,
+    fontSize: fs(9),
     fontWeight: '600',
     color: colors.textDim2,
-    marginBottom: 2,
+    marginBottom: vs(2),
     textTransform: 'uppercase',
   },
   dayWorkoutName: {
-    fontSize: 14.5,
+    fontSize: fs(12.5),
     fontWeight: '700',
     color: colors.text,
   },
@@ -624,22 +765,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 5,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingHorizontal: s(16),
+    paddingBottom: vs(12),
   },
   chip: {
     backgroundColor: `${colors.accent}1F`,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+    paddingHorizontal: s(12),
+    paddingVertical: vs(4),
     borderRadius: 100,
   },
   chipText: {
-    fontSize: 9.5,
+    fontSize: fs(9),
     fontWeight: '700',
     color: colors.accent,
   },
   chipMore: {
-    fontSize: 9.5,
+    fontSize: fs(9),
     color: colors.textDim,
     alignSelf: 'center',
     marginLeft: 5,
@@ -647,8 +788,8 @@ const styles = StyleSheet.create({
   empty: {
     color: colors.textDim,
     textAlign: 'center',
-    marginTop: 40,
-    fontSize: 14,
+    marginTop: vs(40),
+    fontSize: fs(12),
     lineHeight: 20,
   },
 });

@@ -14,6 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 export default function ChatScreen({ route, navigation }) {
   const { otherUserId, otherUserName } = route.params;
@@ -147,24 +148,24 @@ export default function ChatScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, paddingTop: 60, paddingHorizontal: 20 },
-  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginLeft: -4 },
-  back: { color: colors.text, fontSize: 15, fontWeight: '700', marginLeft: 2 },
-  empty: { color: colors.textDim, textAlign: 'center', marginTop: 40, fontSize: 14 },
-  bubbleRow: { flexDirection: 'row', marginBottom: 8 },
+  container: { flex: 1, backgroundColor: colors.bg, paddingTop: screenPaddingTop, paddingHorizontal: s(20) },
+  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: vs(12), marginLeft: -4 },
+  back: { color: colors.text, fontSize: fs(13), fontWeight: '700', marginLeft: 2 },
+  empty: { color: colors.textDim, textAlign: 'center', marginTop: vs(40), fontSize: fs(12) },
+  bubbleRow: { flexDirection: 'row', marginBottom: vs(8) },
   bubbleRowMine: { justifyContent: 'flex-end' },
   bubbleRowTheirs: { justifyContent: 'flex-start' },
-  bubble: { maxWidth: '78%', borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 10 },
+  bubble: { maxWidth: '78%', borderRadius: radius.md, paddingHorizontal: s(14), paddingVertical: vs(10) },
   bubbleMine: { backgroundColor: colors.accent, borderBottomRightRadius: 4 },
   bubbleTheirs: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderBottomLeftRadius: 4 },
-  bubbleTextMine: { color: '#04170F', fontSize: 15 },
-  bubbleTextTheirs: { color: colors.text, fontSize: 15 },
-  bubbleTimeMine: { fontSize: 10, color: 'rgba(4,23,15,0.6)', marginTop: 4, alignSelf: 'flex-end' },
-  bubbleTimeTheirs: { fontSize: 10, color: colors.textDim2, marginTop: 4, alignSelf: 'flex-end' },
+  bubbleTextMine: { color: '#04170F', fontSize: fs(13) },
+  bubbleTextTheirs: { color: colors.text, fontSize: fs(13) },
+  bubbleTimeMine: { fontSize: fs(9), color: 'rgba(4,23,15,0.6)', marginTop: vs(4), alignSelf: 'flex-end' },
+  bubbleTimeTheirs: { fontSize: fs(9), color: colors.textDim2, marginTop: vs(4), alignSelf: 'flex-end' },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingVertical: 12,
+    paddingVertical: vs(12),
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
@@ -175,10 +176,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.pill,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: s(16),
+    paddingVertical: vs(10),
     maxHeight: 100,
-    fontSize: 15,
+    fontSize: fs(13),
     marginRight: 10,
   },
   sendButton: {

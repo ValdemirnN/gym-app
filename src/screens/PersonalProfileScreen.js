@@ -16,6 +16,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import Avatar from '../components/Avatar';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 const IMAGE_MIME_TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
 function getImageContentType(uri) {
@@ -306,23 +307,6 @@ export default function PersonalProfileScreen() {
         <FieldCard label="Horários de disponibilidade" value={displayValue(availabilityHours)} />
         <FieldCard label="Chave Pix" value={displayValue(pixKey)} />
 
-        <Text style={styles.eyebrow}>Financeiro</Text>
-        <TouchableOpacity
-          style={styles.financialCard}
-          onPress={() => navigation.navigate('PersonalFinancialScreen')}
-          activeOpacity={0.8}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={styles.fieldLabel}>Situação com a plataforma</Text>
-            <Text style={styles.fieldValue}>Ativo · vence em 3 dias</Text>
-            <View style={styles.statusLine}>
-              <View style={styles.statusDot} />
-              <Text style={styles.statusText}>Renovação pendente</Text>
-            </View>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
-
         <TouchableOpacity
           style={styles.helpButton}
           onPress={() => navigation.navigate('PersonalDashboard', { screen: 'Faq', params: { role: 'personal' } })}
@@ -551,12 +535,12 @@ export default function PersonalProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text },
+  title: { fontSize: fs(20), fontWeight: '800', color: colors.text },
 
   // ---- header do modo edição ----
-  editHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  cancelText: { color: colors.textDim, fontSize: 14, width: 64 },
-  email: { color: colors.textDim, marginBottom: 24, marginTop: 4, textAlign: 'center' },
+  editHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: vs(4) },
+  cancelText: { color: colors.textDim, fontSize: fs(12), width: 64 },
+  email: { color: colors.textDim, marginBottom: vs(24), marginTop: vs(4), textAlign: 'center' },
 
   // ---- card de topo do modo visualização ----
   profileCard: {
@@ -565,56 +549,56 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.xl,
     padding: 20,
-    marginTop: 16,
-    marginBottom: 20,
+    marginTop: vs(16),
+    marginBottom: vs(20),
     alignItems: 'center',
   },
-  profileName: { fontFamily: undefined, fontWeight: '700', fontSize: 19, color: colors.text, marginTop: 12 },
-  profileSub: { fontSize: 12.5, color: colors.textDim, marginTop: 4 },
+  profileName: { fontFamily: undefined, fontWeight: '700', fontSize: fs(17), color: colors.text, marginTop: vs(12) },
+  profileSub: { fontSize: fs(10.5), color: colors.textDim, marginTop: vs(4) },
   editChip: {
-    marginTop: 14,
+    marginTop: vs(14),
     backgroundColor: colors.accentGlow,
     borderRadius: radius.pill,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingVertical: vs(8),
+    paddingHorizontal: s(16),
   },
-  editChipText: { color: colors.accent, fontWeight: '700', fontSize: 12.5 },
+  editChipText: { color: colors.accent, fontWeight: '700', fontSize: fs(10.5) },
 
   // ---- seções do modo visualização ----
   eyebrow: {
     color: colors.textDim2,
     fontWeight: '700',
-    fontSize: 11.5,
+    fontSize: fs(9.5),
     letterSpacing: 0.9,
     textTransform: 'uppercase',
-    marginTop: 18,
-    marginBottom: 10,
+    marginTop: vs(18),
+    marginBottom: vs(10),
   },
   fieldCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    paddingVertical: 13,
-    paddingHorizontal: 15,
-    marginBottom: 10,
+    paddingVertical: vs(13),
+    paddingHorizontal: s(15),
+    marginBottom: vs(10),
   },
   fieldLabel: {
-    fontSize: 10.5,
+    fontSize: fs(9),
     color: colors.textDim2,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     fontWeight: '700',
-    marginBottom: 4,
+    marginBottom: vs(4),
   },
-  fieldValue: { fontSize: 14.5, color: colors.text, fontWeight: '600' },
+  fieldValue: { fontSize: fs(12.5), color: colors.text, fontWeight: '600' },
 
   // ---- modo edição (form) ----
-  photoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 28 },
+  photoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: vs(28) },
   photoButton: { marginLeft: 16 },
-  photoButtonText: { color: colors.accent, fontWeight: '600', fontSize: 14 },
-  sectionTitle: { color: colors.text, fontWeight: '700', fontSize: 16, marginTop: 12, marginBottom: 12 },
-  label: { color: colors.textDim, marginBottom: 6, fontSize: 13 },
+  photoButtonText: { color: colors.accent, fontWeight: '600', fontSize: fs(12) },
+  sectionTitle: { color: colors.text, fontWeight: '700', fontSize: fs(14), marginTop: vs(12), marginBottom: vs(12) },
+  label: { color: colors.textDim, marginBottom: vs(6), fontSize: fs(11) },
   input: {
     backgroundColor: colors.surface,
     color: colors.text,
@@ -622,72 +606,36 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.sm,
     padding: 14,
-    marginBottom: 16,
-    fontSize: 16,
+    marginBottom: vs(16),
+    fontSize: fs(14),
   },
   textArea: { minHeight: 80, textAlignVertical: 'top' },
-  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16, gap: 8 },
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: vs(16), gap: 8 },
   chip: {
     backgroundColor: colors.surface,
     borderRadius: radius.pill,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    paddingVertical: vs(8),
+    paddingHorizontal: s(14),
     borderWidth: 1,
     borderColor: colors.border,
     marginRight: 8,
-    marginBottom: 8,
+    marginBottom: vs(8),
   },
   chipSelected: { borderColor: colors.accent, backgroundColor: colors.accentGlow },
-  chipText: { color: colors.textDim, fontSize: 13 },
+  chipText: { color: colors.textDim, fontSize: fs(11) },
   chipTextSelected: { color: colors.accent, fontWeight: '600' },
-  saveButton: { backgroundColor: colors.accent, borderRadius: radius.sm, padding: 16, alignItems: 'center', marginTop: 8 },
-  saveButtonText: { color: '#04170F', fontWeight: 'bold', fontSize: 16 },
-  logoutButton: { padding: 16, alignItems: 'center', marginTop: 20 },
-  logoutText: { color: colors.red, fontSize: 15, fontWeight: '700' },
+  saveButton: { backgroundColor: colors.accent, borderRadius: radius.sm, padding: 16, alignItems: 'center', marginTop: vs(8) },
+  saveButtonText: { color: '#04170F', fontWeight: 'bold', fontSize: fs(14) },
+  logoutButton: { padding: 16, alignItems: 'center', marginTop: vs(20) },
+  logoutText: { color: colors.red, fontSize: fs(13), fontWeight: '700' },
   helpButton: {
     padding: 14,
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: vs(24),
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.sm,
   },
-  helpButtonText: { color: colors.text, fontSize: 14, fontWeight: '600' },
-
-  // ---- seção financeiro ----
-  financialCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingVertical: 14,
-    paddingHorizontal: 15,
-    marginBottom: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  statusLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 5,
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: colors.amber,
-    marginRight: 6,
-  },
-  statusText: {
-    color: colors.amber,
-    fontSize: 11.5,
-    fontWeight: '700',
-  },
-  chevron: {
-    color: colors.textFaint,
-    fontSize: 22,
-    fontWeight: '700',
-    marginLeft: 8,
-  },
+  helpButtonText: { color: colors.text, fontSize: fs(12), fontWeight: '600' },
 });

@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 const QUESTIONS = [
   { key: 'q1', text: 'Algum médico já disse que possui um problema cardíaco e recomendou supervisão médica pra atividade física?' },
@@ -86,14 +87,14 @@ export default function StudentParqViewScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: 60 },
-  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, marginLeft: -4 },
-  back: { color: colors.text, fontSize: 15, marginLeft: 2 },
-  title: { fontSize: 20, fontWeight: '800', color: colors.text, marginBottom: 16 },
-  empty: { color: colors.textDim, fontSize: 13, marginTop: 20 },
-  statusCard: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: radius.md, padding: 14, marginBottom: 10 },
-  statusText: { fontSize: 12.5, fontWeight: '600', flex: 1, lineHeight: 18 },
-  meta: { color: colors.textDim, fontSize: 11.5, marginBottom: 16 },
+  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: screenPaddingTop },
+  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: vs(10), marginLeft: -4 },
+  back: { color: colors.text, fontSize: fs(13), marginLeft: 2 },
+  title: { fontSize: fs(18), fontWeight: '800', color: colors.text, marginBottom: vs(16) },
+  empty: { color: colors.textDim, fontSize: fs(11), marginTop: vs(20) },
+  statusCard: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: radius.md, padding: 14, marginBottom: vs(10) },
+  statusText: { fontSize: fs(10.5), fontWeight: '600', flex: 1, lineHeight: 18 },
+  meta: { color: colors.textDim, fontSize: fs(9.5), marginBottom: vs(16) },
   questionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -103,11 +104,11 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     padding: 12,
-    marginBottom: 8,
+    marginBottom: vs(8),
     gap: 10,
   },
-  questionText: { color: colors.text, fontSize: 12.5, flex: 1, lineHeight: 17 },
-  answerBadge: { fontSize: 11.5, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, overflow: 'hidden' },
+  questionText: { color: colors.text, fontSize: fs(10.5), flex: 1, lineHeight: 17 },
+  answerBadge: { fontSize: fs(9.5), fontWeight: '700', paddingHorizontal: s(10), paddingVertical: vs(4), borderRadius: radius.pill, overflow: 'hidden' },
   answerBadgeYes: { color: colors.red, backgroundColor: colors.redGlow },
   answerBadgeNo: { color: colors.accent, backgroundColor: colors.accentGlow },
 });

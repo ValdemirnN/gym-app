@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView 
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 export default function AdminProfileScreen() {
   const { session, profile, signOut, refreshProfile } = useAuth();
@@ -113,9 +114,9 @@ export default function AdminProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text },
-  roleTag: { color: colors.accent, fontSize: 13, marginTop: 4, marginBottom: 24, fontWeight: '700' },
-  label: { color: colors.textDim, marginBottom: 6, fontSize: 13 },
+  title: { fontSize: fs(20), fontWeight: '800', color: colors.text },
+  roleTag: { color: colors.accent, fontSize: fs(11), marginTop: vs(4), marginBottom: vs(24), fontWeight: '700' },
+  label: { color: colors.textDim, marginBottom: vs(6), fontSize: fs(11) },
   input: {
     backgroundColor: colors.surface,
     color: colors.text,
@@ -123,11 +124,11 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.sm,
     padding: 14,
-    marginBottom: 16,
-    fontSize: 16,
+    marginBottom: vs(16),
+    fontSize: fs(14),
   },
-  saveButton: { backgroundColor: colors.accent, borderRadius: radius.sm, padding: 16, alignItems: 'center', marginTop: 8 },
-  saveButtonText: { color: '#04170F', fontWeight: '700', fontSize: 16 },
-  logoutButton: { padding: 16, alignItems: 'center', marginTop: 20 },
-  logoutText: { color: colors.red, fontSize: 15, fontWeight: '700' },
+  saveButton: { backgroundColor: colors.accent, borderRadius: radius.sm, padding: 16, alignItems: 'center', marginTop: vs(8) },
+  saveButtonText: { color: '#04170F', fontWeight: '700', fontSize: fs(14) },
+  logoutButton: { padding: 16, alignItems: 'center', marginTop: vs(20) },
+  logoutText: { color: colors.red, fontSize: fs(13), fontWeight: '700' },
 });

@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import Avatar from '../components/Avatar';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 // Lista todos os alunos do personal, mostrando a última mensagem trocada
 // (se houver) e quantas mensagens não lidas existem em cada conversa.
@@ -111,16 +112,16 @@ export default function PersonalChatListScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 20, paddingTop: 60 },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 16 },
-  empty: { color: colors.textDim, textAlign: 'center', marginTop: 40, fontSize: 14, lineHeight: 20 },
+  container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: s(20), paddingTop: screenPaddingTop },
+  title: { fontSize: fs(20), fontWeight: '800', color: colors.text, marginBottom: vs(16) },
+  empty: { color: colors.textDim, textAlign: 'center', marginTop: vs(40), fontSize: fs(12), lineHeight: 20 },
   card: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md + 2,
     padding: 12,
-    marginBottom: 10,
+    marginBottom: vs(10),
     flexDirection: 'row',
     alignItems: 'center',
     position: 'relative',
@@ -134,17 +135,17 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: colors.accent,
   },
-  cardTitle: { color: colors.text, fontSize: 14.5, fontWeight: '700' },
-  cardPreview: { color: colors.textDim, fontSize: 12.5, marginTop: 3 },
+  cardTitle: { color: colors.text, fontSize: fs(12.5), fontWeight: '700' },
+  cardPreview: { color: colors.textDim, fontSize: fs(10.5), marginTop: vs(3) },
   badge: {
     backgroundColor: colors.accent,
     borderRadius: 12,
     minWidth: 24,
     height: 24,
-    paddingHorizontal: 6,
+    paddingHorizontal: s(6),
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 8,
   },
-  badgeText: { color: '#04170F', fontSize: 12, fontWeight: 'bold' },
+  badgeText: { color: '#04170F', fontSize: fs(10), fontWeight: 'bold' },
 });

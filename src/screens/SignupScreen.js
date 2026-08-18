@@ -11,6 +11,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { isPasswordValid } from '../utils/passwordValidation';
@@ -261,20 +262,20 @@ export default function SignupScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#111827', padding: 24, paddingTop: 60 },
-  title: { fontSize: 26, fontWeight: 'bold', color: '#fff', textAlign: 'center', marginBottom: 8 },
-  subtitle: { fontSize: 15, color: '#9CA3AF', textAlign: 'center', marginBottom: 24 },
-  back: { color: '#22C55E', fontSize: 15, marginBottom: 12 },
-  sectionTitle: { color: '#fff', fontWeight: '600', fontSize: 15, marginTop: 20, marginBottom: 10 },
-  label: { color: '#9CA3AF', marginBottom: 6, fontSize: 13 },
-  emptyText: { color: '#9CA3AF', fontSize: 13, marginTop: 4, marginBottom: 8, lineHeight: 18 },
+  container: { flex: 1, backgroundColor: '#111827', padding: 24, paddingTop: screenPaddingTop },
+  title: { fontSize: fs(24), fontWeight: 'bold', color: '#fff', textAlign: 'center', marginBottom: vs(8) },
+  subtitle: { fontSize: fs(13), color: '#9CA3AF', textAlign: 'center', marginBottom: vs(24) },
+  back: { color: '#22C55E', fontSize: fs(13), marginBottom: vs(12) },
+  sectionTitle: { color: '#fff', fontWeight: '600', fontSize: fs(13), marginTop: vs(20), marginBottom: vs(10) },
+  label: { color: '#9CA3AF', marginBottom: vs(6), fontSize: fs(11) },
+  emptyText: { color: '#9CA3AF', fontSize: fs(11), marginTop: vs(4), marginBottom: vs(8), lineHeight: 18 },
   input: {
     backgroundColor: '#1F2937',
     color: '#fff',
     borderRadius: 10,
     padding: 14,
-    marginBottom: 12,
-    fontSize: 16,
+    marginBottom: vs(12),
+    fontSize: fs(14),
   },
   textArea: { minHeight: 70, textAlignVertical: 'top' },
   button: {
@@ -282,33 +283,33 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 16,
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: vs(16),
   },
-  buttonText: { color: '#111827', fontWeight: 'bold', fontSize: 16 },
-  link: { color: '#22C55E', textAlign: 'center', marginTop: 20, fontSize: 14 },
+  buttonText: { color: '#111827', fontWeight: 'bold', fontSize: fs(14) },
+  link: { color: '#22C55E', textAlign: 'center', marginTop: vs(20), fontSize: fs(12) },
 
   roleCard: {
     backgroundColor: '#1F2937',
     borderRadius: 14,
     padding: 20,
-    marginBottom: 16,
+    marginBottom: vs(16),
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#374151',
   },
-  roleEmoji: { fontSize: 32, marginBottom: 8 },
-  roleTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 4 },
-  roleDesc: { color: '#9CA3AF', fontSize: 13, textAlign: 'center' },
+  roleEmoji: { fontSize: fs(30), marginBottom: vs(8) },
+  roleTitle: { color: '#fff', fontSize: fs(16), fontWeight: 'bold', marginBottom: vs(4) },
+  roleDesc: { color: '#9CA3AF', fontSize: fs(11), textAlign: 'center' },
 
   personalOption: {
     backgroundColor: '#1F2937',
     borderRadius: 10,
     padding: 14,
-    marginBottom: 8,
+    marginBottom: vs(8),
     borderWidth: 1,
     borderColor: '#374151',
   },
   personalOptionSelected: { borderColor: '#22C55E', backgroundColor: '#14532D' },
-  personalOptionText: { color: '#fff', fontSize: 15 },
+  personalOptionText: { color: '#fff', fontSize: fs(13) },
   personalOptionTextSelected: { color: '#22C55E', fontWeight: '600' },
 });

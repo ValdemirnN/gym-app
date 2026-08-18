@@ -8,6 +8,7 @@ import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 function formatDate(dateStr) {
   if (!dateStr) return '-';
@@ -420,12 +421,12 @@ export default function StudentSubscriptionScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: 60 },
-  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginLeft: -4 },
-  back: { color: colors.text, fontSize: 15, marginLeft: 2 },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 16 },
+  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: screenPaddingTop },
+  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: vs(16), marginLeft: -4 },
+  back: { color: colors.text, fontSize: fs(13), marginLeft: 2 },
+  title: { fontSize: fs(20), fontWeight: '800', color: colors.text, marginBottom: vs(16) },
 
-  summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
+  summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: vs(14) },
   summaryCard: {
     width: '47%',
     backgroundColor: colors.surface,
@@ -434,9 +435,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: 12,
   },
-  summaryLabel: { color: colors.textDim, fontSize: 11, marginBottom: 4 },
-  summaryValue: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  summaryMeta: { color: colors.textDim, fontSize: 11, marginTop: 2 },
+  summaryLabel: { color: colors.textDim, fontSize: fs(9), marginBottom: vs(4) },
+  summaryValue: { color: colors.text, fontSize: fs(13), fontWeight: '700' },
+  summaryMeta: { color: colors.textDim, fontSize: fs(9), marginTop: vs(2) },
 
   feeBox: {
     flexDirection: 'row',
@@ -445,9 +446,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentGlow,
     borderRadius: radius.md,
     padding: 14,
-    marginBottom: 12,
+    marginBottom: vs(12),
   },
-  feeValue: { color: colors.text, fontSize: 15, fontWeight: '700', marginTop: 4 },
+  feeValue: { color: colors.text, fontSize: fs(13), fontWeight: '700', marginTop: vs(4) },
 
   accessCard: {
     flexDirection: 'row',
@@ -458,10 +459,10 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     padding: 14,
-    marginBottom: 12,
+    marginBottom: vs(12),
   },
-  accessTitle: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  accessSub: { color: colors.textDim, fontSize: 12, marginTop: 2, lineHeight: 16 },
+  accessTitle: { color: colors.text, fontSize: fs(12), fontWeight: '600' },
+  accessSub: { color: colors.textDim, fontSize: fs(10), marginTop: vs(2), lineHeight: 16 },
 
   infoBox: {
     flexDirection: 'row',
@@ -469,9 +470,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentGlow,
     borderRadius: radius.md,
     padding: 12,
-    marginBottom: 14,
+    marginBottom: vs(14),
   },
-  infoText: { color: colors.textDim, fontSize: 12, lineHeight: 17, flex: 1 },
+  infoText: { color: colors.textDim, fontSize: fs(10), lineHeight: 17, flex: 1 },
 
   registerBox: {
     backgroundColor: colors.surface,
@@ -479,24 +480,24 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     padding: 14,
-    marginBottom: 16,
+    marginBottom: vs(16),
   },
-  registerLabel: { color: colors.textDim, fontSize: 12, marginBottom: 4 },
-  registerHint: { color: colors.textFaint, fontSize: 11, marginBottom: 10 },
+  registerLabel: { color: colors.textDim, fontSize: fs(10), marginBottom: vs(4) },
+  registerHint: { color: colors.textFaint, fontSize: fs(9), marginBottom: vs(10) },
 
   monthSelector: { gap: 6 },
   monthOption: {
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.sm,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: vs(8),
+    paddingHorizontal: s(12),
   },
   monthOptionActive: {
     borderColor: colors.accent,
     backgroundColor: colors.accentGlow,
   },
-  monthOptionText: { color: colors.textDim, fontSize: 13 },
+  monthOptionText: { color: colors.textDim, fontSize: fs(11) },
   monthOptionTextActive: { color: colors.accent, fontWeight: '600' },
 
   amountInput: {
@@ -512,14 +513,14 @@ const styles = StyleSheet.create({
   registerButton: {
     backgroundColor: colors.accent,
     borderRadius: radius.sm - 4,
-    paddingHorizontal: 16,
+    paddingHorizontal: s(16),
     justifyContent: 'center',
   },
   registerButtonText: { color: '#04170F', fontWeight: '700' },
 
-  historyTitle: { color: colors.textDim, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', marginBottom: 2 },
-  historyHint: { color: colors.textFaint, fontSize: 11, marginBottom: 10 },
-  empty: { color: colors.textDim, textAlign: 'center', marginTop: 40, fontSize: 14 },
+  historyTitle: { color: colors.textDim, fontSize: fs(10), fontWeight: '700', textTransform: 'uppercase', marginBottom: vs(2) },
+  historyHint: { color: colors.textFaint, fontSize: fs(9), marginBottom: vs(10) },
+  empty: { color: colors.textDim, textAlign: 'center', marginTop: vs(40), fontSize: fs(12) },
 
   card: {
     backgroundColor: colors.surface,
@@ -527,7 +528,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     padding: 14,
-    marginBottom: 8,
+    marginBottom: vs(8),
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -544,11 +545,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardTitle: { color: colors.text, fontSize: 14, fontWeight: '700', textTransform: 'capitalize' },
-  cardSubtitle: { color: colors.textDim, fontSize: 12, marginTop: 2 },
-  cardMeta: { color: colors.textFaint, fontSize: 11, marginTop: 2 },
-  badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.pill },
-  badgeText: { fontSize: 11, fontWeight: '700' },
+  cardTitle: { color: colors.text, fontSize: fs(12), fontWeight: '700', textTransform: 'capitalize' },
+  cardSubtitle: { color: colors.textDim, fontSize: fs(10), marginTop: vs(2) },
+  cardMeta: { color: colors.textFaint, fontSize: fs(9), marginTop: vs(2) },
+  badge: { paddingHorizontal: s(10), paddingVertical: vs(5), borderRadius: radius.pill },
+  badgeText: { fontSize: fs(9), fontWeight: '700' },
   trashBtn: {
     padding: 4,
     borderRadius: 6,
@@ -557,23 +558,23 @@ const styles = StyleSheet.create({
   },
 
   deleteConfirm: { flex: 1 },
-  deleteConfirmText: { color: colors.red, fontSize: 14, fontWeight: '700' },
-  deleteConfirmSub: { color: colors.textDim, fontSize: 12, marginTop: 2 },
+  deleteConfirmText: { color: colors.red, fontSize: fs(12), fontWeight: '700' },
+  deleteConfirmSub: { color: colors.textDim, fontSize: fs(10), marginTop: vs(2) },
   btnCancel: {
     flex: 1,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.sm - 4,
-    paddingVertical: 8,
+    paddingVertical: vs(8),
     alignItems: 'center',
   },
-  btnCancelText: { color: colors.textDim, fontSize: 13 },
+  btnCancelText: { color: colors.textDim, fontSize: fs(11) },
   btnDelete: {
     flex: 1,
     backgroundColor: colors.red,
     borderRadius: radius.sm - 4,
-    paddingVertical: 8,
+    paddingVertical: vs(8),
     alignItems: 'center',
   },
-  btnDeleteText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  btnDeleteText: { color: '#fff', fontSize: fs(11), fontWeight: '700' },
 });

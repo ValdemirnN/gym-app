@@ -15,9 +15,12 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { insertRow, updateRow } from '../lib/dataClient';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 export default function ActiveWorkoutScreen({ route, navigation }) {
-  const { logId, workoutName, exercises } = route.params;
+  const { logId, workoutLogId, workoutName, exercises } = route.params;
+  // Aceita tanto logId (StudentWorkoutViewScreen) quanto workoutLogId (WorkoutDetailScreen)
+  const resolvedLogId = logId ?? workoutLogId;
 
   const [startedAt] = useState(() => Date.now());
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -38,7 +41,7 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
   // Estrutura: { [exerciseId]: [{reps, weight, done}, ...] }
   const initialState = {};
   const initialCardioState = {};
-  exercises.forEach((item) => {
+  (exercises || []).forEach((item) => {
     if (item.exercises.exercise_type === 'cardio') {
       initialCardioState[item.exercises.id] = {
         duration: item.target_duration_minutes ? String(item.target_duration_minutes) : '',
@@ -63,7 +66,7 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
 
   // mapa exerciseId -> lista de substitutos cadastrados pelo personal pra esse item do treino
   const allowedSubstitutesByExercise = {};
-  exercises.forEach((item) => {
+  (exercises || []).forEach((item) => {
     allowedSubstitutesByExercise[item.exercises.id] = (item.workout_exercise_substitutes || [])
       .filter((s) => s.exercises)
       .map((s) => ({
@@ -218,16 +221,16 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
     setFinishing(true);
 
     const rows = [];
-    Object.entries(sets).forEach(([exerciseId, setList]) => {
+    Object.entries(sets || {}).forEach(([exerciseId, setList]) => {
       const status = exerciseStatus[exerciseId];
       if (status?.status === 'pulado') return; // exercício pulado não gera séries
 
       const effectiveExerciseId = status?.status === 'substituido' ? status.substituteId : exerciseId;
 
-      setList.forEach((s, index) => {
+      (setList || []).forEach((s, index) => {
         if (s.done) {
           rows.push({
-            workout_log_id: logId,
+            workout_log_id: resolvedLogId,
             exercise_id: effectiveExerciseId,
             set_number: index + 1,
             reps_done: parseInt(s.reps) || 0,
@@ -239,12 +242,12 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
 
     // Cardio: só entra no registro o que o aluno marcou como concluído
     const cardioRows = [];
-    Object.entries(cardio).forEach(([exerciseId, c]) => {
+    Object.entries(cardio || {}).forEach(([exerciseId, c]) => {
       const status = exerciseStatus[exerciseId];
       if (status?.status === 'pulado' || !c.done) return;
       const effectiveExerciseId = status?.status === 'substituido' ? status.substituteId : exerciseId;
       cardioRows.push({
-        workout_log_id: logId,
+        workout_log_id: resolvedLogId,
         exercise_id: effectiveExerciseId,
         duration_minutes: c.duration ? parseFloat(c.duration.replace(',', '.')) : null,
         distance_km: c.distance ? parseFloat(c.distance.replace(',', '.')) : null,
@@ -276,7 +279,7 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
 
     // Registra os exercícios pulados/substituídos (só os que tiveram alteração)
     const statusRows = Object.entries(exerciseStatus).map(([exerciseId, s]) => ({
-      workout_log_id: logId,
+      workout_log_id: resolvedLogId,
       exercise_id: exerciseId,
       status: s.status,
       substitute_exercise_id: s.status === 'substituido' ? s.substituteId : null,
@@ -301,7 +304,7 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
         feedback_mood: moodChoice,
         feedback_comment: feedbackComment.trim() || null,
       },
-      { id: logId }
+      { id: resolvedLogId }
     );
     wentOffline = wentOffline || finishOffline;
 
@@ -326,11 +329,11 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
         </View>
       </View>
 
-      {exercises.map((item) => {
+      {(exercises || []).map((item) => {
         const exerciseId = item.exercises.id;
         const status = exerciseStatus[exerciseId];
         const comboPartners = item.combo_group
-          ? exercises.filter((e) => e.combo_group === item.combo_group && e.exercises.id !== exerciseId).map((e) => e.exercises.name)
+          ? (exercises || []).filter((e) => e.combo_group === item.combo_group && e.exercises.id !== exerciseId).map((e) => e.exercises.name)
           : [];
 
         return (
@@ -683,10 +686,11 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
             <Text style={styles.fieldLabel}>O que você achou dessa atividade?</Text>
             <View style={styles.moodRow}>
               {[
-                { key: 'leve', label: 'Tranquilo' },
-                { key: 'moderado', label: 'Moderado' },
-                { key: 'dificil', label: 'Difícil' },
-                { key: 'exaustao', label: 'Exaustão máxima' },
+                { key: 'muito_leve', label: '😴 Muito Leve' },
+                { key: 'leve', label: '🙂 Leve' },
+                { key: 'moderado', label: '💪 Moderado' },
+                { key: 'pesado', label: '🔥 Pesado' },
+                { key: 'exaustao', label: '🫠 Exaustão Máxima' },
               ].map((m) => (
                 <TouchableOpacity
                   key={m.key}
@@ -720,17 +724,17 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text, flexShrink: 1 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  title: { fontSize: fs(20), fontWeight: '800', color: colors.text, flexShrink: 1 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: vs(20) },
   timerBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.accentGlow,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: s(10),
+    paddingVertical: vs(6),
     borderRadius: radius.pill,
   },
-  timerText: { color: colors.accent, fontSize: 13, fontWeight: '700' },
+  timerText: { color: colors.accent, fontSize: fs(11), fontWeight: '700' },
   finishIconCircle: {
     width: 56,
     height: 56,
@@ -739,30 +743,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
-    marginBottom: 12,
+    marginBottom: vs(12),
   },
-  finishTitle: { color: colors.text, fontSize: 20, fontWeight: '800', textAlign: 'center' },
-  finishSubtitle: { color: colors.textDim, fontSize: 13, textAlign: 'center', marginBottom: 16 },
+  finishTitle: { color: colors.text, fontSize: fs(18), fontWeight: '800', textAlign: 'center' },
+  finishSubtitle: { color: colors.textDim, fontSize: fs(11), textAlign: 'center', marginBottom: vs(16) },
   finishStatsBox: {
     backgroundColor: colors.surface2,
     borderRadius: radius.md,
     padding: 14,
-    marginBottom: 16,
+    marginBottom: vs(16),
   },
-  finishStatsRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
-  finishStatsLabel: { color: colors.textDim, fontSize: 12.5, fontWeight: '600' },
-  finishStatsValue: { color: colors.text, fontSize: 12.5, fontWeight: '700' },
-  fieldLabel: { color: colors.textDim, fontSize: 12.5, fontWeight: '600', marginBottom: 8, marginTop: 4 },
-  moodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  finishStatsRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: vs(4) },
+  finishStatsLabel: { color: colors.textDim, fontSize: fs(10.5), fontWeight: '600' },
+  finishStatsValue: { color: colors.text, fontSize: fs(10.5), fontWeight: '700' },
+  fieldLabel: { color: colors.textDim, fontSize: fs(10.5), fontWeight: '600', marginBottom: vs(8), marginTop: vs(4) },
+  moodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: vs(16) },
   moodChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: s(12),
+    paddingVertical: vs(8),
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border,
   },
   moodChipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  moodChipText: { color: colors.textDim, fontSize: 12 },
+  moodChipText: { color: colors.textDim, fontSize: fs(10) },
   moodChipTextActive: { color: '#04170F', fontWeight: '700' },
   exerciseBlock: {
     backgroundColor: colors.surface,
@@ -770,12 +774,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md + 1,
     padding: 14,
-    marginBottom: 14,
+    marginBottom: vs(14),
   },
-  exerciseHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  exerciseName: { color: colors.text, fontSize: 14.5, fontWeight: '700' },
-  substitutedLabel: { color: colors.textDim, fontSize: 12, marginTop: 2, fontStyle: 'italic' },
-  menuButton: { paddingHorizontal: 10, paddingVertical: 4 },
+  exerciseHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: vs(10) },
+  exerciseName: { color: colors.text, fontSize: fs(12.5), fontWeight: '700' },
+  substitutedLabel: { color: colors.textDim, fontSize: fs(10), marginTop: vs(2), fontStyle: 'italic' },
+  menuButton: { paddingHorizontal: s(10), paddingVertical: vs(4) },
   skippedBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -784,22 +788,22 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     padding: 12,
   },
-  skippedText: { color: colors.red, fontSize: 13, flex: 1 },
-  setRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 },
-  cardioBlock: { marginTop: 4 },
-  cardioTarget: { color: colors.textDim, fontSize: 12, marginBottom: 10 },
-  cardioRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  cardioLabel: { color: colors.textDim2, fontSize: 11, marginBottom: 4 },
-  intensityRow: { flexDirection: 'row', gap: 6, marginBottom: 12 },
+  skippedText: { color: colors.red, fontSize: fs(11), flex: 1 },
+  setRow: { flexDirection: 'row', alignItems: 'center', marginBottom: vs(8), gap: 8 },
+  cardioBlock: { marginTop: vs(4) },
+  cardioTarget: { color: colors.textDim, fontSize: fs(10), marginBottom: vs(10) },
+  cardioRow: { flexDirection: 'row', gap: 10, marginBottom: vs(10) },
+  cardioLabel: { color: colors.textDim2, fontSize: fs(9), marginBottom: vs(4) },
+  intensityRow: { flexDirection: 'row', gap: 6, marginBottom: vs(12) },
   intensityChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: s(10),
+    paddingVertical: vs(6),
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border,
   },
   intensityChipActive: { backgroundColor: colors.accentGlow, borderColor: colors.accent },
-  intensityChipText: { color: colors.textDim, fontSize: 11.5, textTransform: 'capitalize' },
+  intensityChipText: { color: colors.textDim, fontSize: fs(9.5), textTransform: 'capitalize' },
   intensityChipTextActive: { color: colors.accent, fontWeight: '700' },
   cardioDoneButton: {
     flexDirection: 'row',
@@ -808,12 +812,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.sm,
-    paddingVertical: 11,
+    paddingVertical: vs(11),
   },
   cardioDoneButtonActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  cardioDoneText: { color: colors.textDim, fontSize: 13, fontWeight: '600' },
+  cardioDoneText: { color: colors.textDim, fontSize: fs(11), fontWeight: '600' },
   cardioDoneTextActive: { color: '#04170F' },
-  setLabel: { color: colors.textDim, width: 56, fontSize: 12.5 },
+  setLabel: { color: colors.textDim, width: 56, fontSize: fs(10.5) },
   setInput: {
     backgroundColor: colors.surface2,
     color: colors.text,
@@ -822,7 +826,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm - 4,
     width: 60,
     textAlign: 'center',
-    paddingVertical: 8,
+    paddingVertical: vs(8),
   },
   doneButton: {
     width: 32,
@@ -835,8 +839,8 @@ const styles = StyleSheet.create({
     marginLeft: 'auto',
   },
   doneButtonActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  finishButton: { backgroundColor: colors.accent, borderRadius: radius.sm, padding: 16, alignItems: 'center', marginTop: 8 },
-  finishButtonText: { color: '#04170F', fontWeight: '700', fontSize: 16 },
+  finishButton: { backgroundColor: colors.accent, borderRadius: radius.sm, padding: 16, alignItems: 'center', marginTop: vs(8) },
+  finishButtonText: { color: '#04170F', fontWeight: '700', fontSize: fs(14) },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalBox: {
     backgroundColor: colors.surface2,
@@ -847,9 +851,9 @@ const styles = StyleSheet.create({
     padding: 20,
     maxHeight: '85%',
   },
-  modalTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: 12 },
-  modalHint: { color: colors.textDim, fontSize: 12.5, marginBottom: 8 },
-  videoButton: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  modalTitle: { color: colors.text, fontSize: fs(14), fontWeight: '700', marginBottom: vs(12) },
+  modalHint: { color: colors.textDim, fontSize: fs(10.5), marginBottom: vs(8) },
+  videoButton: { flexDirection: 'row', alignItems: 'center', marginTop: vs(8) },
   videoThumb: {
     width: 22,
     height: 22,
@@ -859,11 +863,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 6,
   },
-  comboBadge: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  comboBadgeText: { color: colors.amber, fontSize: 11, fontWeight: '700' },
-  instructionsText: { color: colors.textDim, fontSize: 12, lineHeight: 17, marginTop: 6 },
-  progressionNote: { color: colors.amber, fontSize: 12, fontWeight: '600', marginTop: 6 },
-  videoButtonText: { color: colors.accent, fontSize: 12, fontWeight: '600', marginLeft: 4 },
+  comboBadge: { flexDirection: 'row', alignItems: 'center', marginBottom: vs(8) },
+  comboBadgeText: { color: colors.amber, fontSize: fs(9), fontWeight: '700' },
+  instructionsText: { color: colors.textDim, fontSize: fs(10), lineHeight: 17, marginTop: vs(6) },
+  progressionNote: { color: colors.amber, fontSize: fs(10), fontWeight: '600', marginTop: vs(6) },
+  videoButtonText: { color: colors.accent, fontSize: fs(10), fontWeight: '600', marginLeft: 4 },
   modalInput: {
     backgroundColor: colors.surface,
     color: colors.text,
@@ -871,8 +875,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.sm,
     padding: 12,
-    marginBottom: 12,
-    fontSize: 14,
+    marginBottom: vs(12),
+    fontSize: fs(12),
   },
   modalTextArea: {
     backgroundColor: colors.surface,
@@ -881,20 +885,20 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.sm,
     padding: 12,
-    fontSize: 14,
+    fontSize: fs(12),
     minHeight: 70,
     textAlignVertical: 'top',
   },
-  modalEmpty: { color: colors.textDim, fontSize: 13, paddingVertical: 12 },
+  modalEmpty: { color: colors.textDim, fontSize: fs(11), paddingVertical: vs(12) },
   catalogRow: {
-    paddingVertical: 12,
+    paddingVertical: vs(12),
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  catalogRowText: { color: colors.text, fontSize: 14 },
-  catalogRowGroup: { color: colors.textDim, fontSize: 12 },
+  catalogRowText: { color: colors.text, fontSize: fs(12) },
+  catalogRowGroup: { color: colors.textDim, fontSize: fs(10) },
   chosenRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -902,15 +906,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentGlow,
     borderRadius: radius.sm,
     padding: 12,
-    marginBottom: 4,
+    marginBottom: vs(4),
   },
-  chosenText: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  chosenRemove: { color: colors.textDim2, fontSize: 16, fontWeight: '600' },
+  chosenText: { color: colors.text, fontSize: fs(14), fontWeight: '700' },
+  chosenRemove: { color: colors.textDim2, fontSize: fs(14), fontWeight: '600' },
   chosenDetail: {
     backgroundColor: colors.surface2,
     borderRadius: radius.md,
     padding: 14,
-    marginBottom: 12,
+    marginBottom: vs(12),
     borderWidth: 1,
     borderColor: colors.accent,
   },
@@ -918,22 +922,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    marginBottom: vs(12),
   },
   chosenGroup: {
-    fontSize: 12,
+    fontSize: fs(10),
     color: colors.textDim,
-    marginTop: 4,
+    marginTop: vs(4),
   },
   detailLabel: {
-    fontSize: 13,
+    fontSize: fs(11),
     fontWeight: '600',
     color: colors.text,
-    marginTop: 12,
-    marginBottom: 8,
+    marginTop: vs(12),
+    marginBottom: vs(8),
   },
   detailText: {
-    fontSize: 12,
+    fontSize: fs(10),
     color: colors.textDim,
     fontStyle: 'italic',
     lineHeight: 16,
@@ -941,36 +945,36 @@ const styles = StyleSheet.create({
   repsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: vs(12),
   },
   repsControl: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.bg,
     borderRadius: radius.sm,
-    paddingHorizontal: 0,
+    paddingHorizontal: s(0),
     borderWidth: 1,
     borderColor: colors.accent,
   },
   repsBtn: {
-    fontSize: 16,
+    fontSize: fs(14),
     fontWeight: '600',
     color: colors.accent,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: s(10),
+    paddingVertical: vs(6),
   },
   repsValue: {
-    fontSize: 14,
+    fontSize: fs(12),
     fontWeight: '600',
     color: colors.text,
-    paddingHorizontal: 8,
+    paddingHorizontal: s(8),
     borderLeftWidth: 1,
     borderRightWidth: 1,
     borderColor: colors.accent,
-    paddingVertical: 6,
+    paddingVertical: vs(6),
   },
   repsX: {
-    fontSize: 14,
+    fontSize: fs(12),
     color: colors.textDim,
     marginHorizontal: 12,
     fontWeight: '600',
@@ -982,11 +986,11 @@ const styles = StyleSheet.create({
     borderColor: colors.accent,
     borderRadius: radius.sm,
     padding: 10,
-    fontSize: 12,
+    fontSize: fs(10),
     minHeight: 50,
     maxHeight: 80,
     textAlignVertical: 'top',
-    marginBottom: 12,
+    marginBottom: vs(12),
   },
   videoButton: {
     flexDirection: 'row',
@@ -996,10 +1000,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.accent,
     borderRadius: radius.sm,
-    paddingVertical: 12,
+    paddingVertical: vs(12),
   },
-  modalConfirm: { backgroundColor: colors.accent, borderRadius: radius.sm, padding: 14, alignItems: 'center', marginTop: 14 },
-  modalConfirmText: { color: '#04170F', fontWeight: '700', fontSize: 15 },
-  modalClose: { marginTop: 10, alignItems: 'center', paddingVertical: 8 },
-  modalCloseText: { color: colors.textDim, fontSize: 14 },
+  modalConfirm: { backgroundColor: colors.accent, borderRadius: radius.sm, padding: 14, alignItems: 'center', marginTop: vs(14) },
+  modalConfirmText: { color: '#04170F', fontWeight: '700', fontSize: fs(13) },
+  modalClose: { marginTop: vs(10), alignItems: 'center', paddingVertical: vs(8) },
+  modalCloseText: { color: colors.textDim, fontSize: fs(12) },
 });

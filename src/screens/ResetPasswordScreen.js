@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 import { useAuth } from '../context/AuthContext';
 import { PASSWORD_RULES, isPasswordValid } from '../utils/passwordValidation';
 
@@ -87,18 +88,18 @@ export default function ResetPasswordScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111827', justifyContent: 'center', padding: 24 },
-  title: { fontSize: 26, fontWeight: 'bold', color: '#fff', textAlign: 'center', marginBottom: 8 },
-  subtitle: { fontSize: 15, color: '#9CA3AF', textAlign: 'center', marginBottom: 24, lineHeight: 21 },
+  title: { fontSize: fs(24), fontWeight: 'bold', color: '#fff', textAlign: 'center', marginBottom: vs(8) },
+  subtitle: { fontSize: fs(13), color: '#9CA3AF', textAlign: 'center', marginBottom: vs(24), lineHeight: 21 },
   input: {
     backgroundColor: '#1F2937',
     color: '#fff',
     borderRadius: 10,
     padding: 14,
-    marginBottom: 12,
-    fontSize: 16,
+    marginBottom: vs(12),
+    fontSize: fs(14),
   },
-  rulesBox: { marginTop: 4, marginBottom: 20 },
-  ruleText: { color: '#9CA3AF', fontSize: 13, marginBottom: 6 },
+  rulesBox: { marginTop: vs(4), marginBottom: vs(20) },
+  ruleText: { color: '#9CA3AF', fontSize: fs(11), marginBottom: vs(6) },
   ruleTextMet: { color: '#22C55E' },
   button: {
     backgroundColor: '#22C55E',
@@ -107,6 +108,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttonDisabled: { opacity: 0.5 },
-  buttonText: { color: '#111827', fontWeight: 'bold', fontSize: 16 },
-  link: { color: '#EF4444', textAlign: 'center', marginTop: 22, fontSize: 14 },
+  buttonText: { color: '#111827', fontWeight: 'bold', fontSize: fs(14) },
+  link: { color: '#EF4444', textAlign: 'center', marginTop: vs(22), fontSize: fs(12) },
 });

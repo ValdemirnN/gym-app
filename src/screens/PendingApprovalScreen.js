@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 import { useAuth } from '../context/AuthContext';
 
 export default function PendingApprovalScreen() {
@@ -37,11 +38,11 @@ export default function PendingApprovalScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111827', justifyContent: 'center', alignItems: 'center', padding: 32 },
-  emoji: { fontSize: 56, marginBottom: 16 },
-  title: { fontSize: 22, fontWeight: 'bold', color: '#fff', marginBottom: 12, textAlign: 'center' },
-  message: { fontSize: 15, color: '#9CA3AF', textAlign: 'center', lineHeight: 22, marginBottom: 32 },
-  refreshButton: { backgroundColor: '#22C55E', borderRadius: 10, paddingVertical: 14, paddingHorizontal: 28 },
-  refreshText: { color: '#111827', fontWeight: 'bold', fontSize: 15 },
-  logoutButton: { marginTop: 20, padding: 12 },
-  logoutText: { color: '#EF4444', fontSize: 14 },
+  emoji: { fontSize: fs(54), marginBottom: vs(16) },
+  title: { fontSize: fs(20), fontWeight: 'bold', color: '#fff', marginBottom: vs(12), textAlign: 'center' },
+  message: { fontSize: fs(13), color: '#9CA3AF', textAlign: 'center', lineHeight: 22, marginBottom: vs(32) },
+  refreshButton: { backgroundColor: '#22C55E', borderRadius: 10, paddingVertical: vs(14), paddingHorizontal: s(28) },
+  refreshText: { color: '#111827', fontWeight: 'bold', fontSize: fs(13) },
+  logoutButton: { marginTop: vs(20), padding: 12 },
+  logoutText: { color: '#EF4444', fontSize: fs(12) },
 });

@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import Avatar from '../components/Avatar';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 // Monta o link do WhatsApp a partir de um número em qualquer formato,
 // assumindo Brasil (55) quando o número não trouxer o código do país.
@@ -125,13 +126,13 @@ export default function TalkToPersonalScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: 60 },
-  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginLeft: -4 },
-  back: { color: colors.text, fontSize: 15, marginLeft: 2 },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 20 },
-  empty: { color: colors.textDim, fontSize: 14, lineHeight: 20, marginTop: 20 },
-  card: { alignItems: 'center', marginBottom: 28 },
-  personalName: { color: colors.text, fontSize: 18, fontWeight: '700', marginTop: 10 },
+  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: screenPaddingTop },
+  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: vs(16), marginLeft: -4 },
+  back: { color: colors.text, fontSize: fs(13), marginLeft: 2 },
+  title: { fontSize: fs(20), fontWeight: '800', color: colors.text, marginBottom: vs(20) },
+  empty: { color: colors.textDim, fontSize: fs(12), lineHeight: 20, marginTop: vs(20) },
+  card: { alignItems: 'center', marginBottom: vs(28) },
+  personalName: { color: colors.text, fontSize: fs(16), fontWeight: '700', marginTop: vs(10) },
   optionButton: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -141,7 +142,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    marginBottom: 12,
+    marginBottom: vs(12),
   },
   whatsappButton: { borderColor: colors.accent },
   optionIcon: {
@@ -153,6 +154,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   optionIconWhatsapp: {},
-  optionTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  optionDesc: { color: colors.textDim, fontSize: 12, marginTop: 3 },
+  optionTitle: { color: colors.text, fontSize: fs(13), fontWeight: '700' },
+  optionDesc: { color: colors.textDim, fontSize: fs(10), marginTop: vs(3) },
 });

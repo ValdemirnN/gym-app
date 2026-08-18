@@ -9,11 +9,13 @@ import {
   LayoutAnimation,
   UIManager,
   Platform,
+  TextInput,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -85,7 +87,7 @@ function LogCard({ item, studentName }) {
         .eq('workout_log_id', item.id),
       supabase
         .from('workout_logs')
-        .select('feedback_mood, feedback_comment, day_change_reason')
+        .select('feedback_mood, feedback_comment, day_change_reason, personal_reply')
         .eq('id', item.id)
         .single(),
     ]);
@@ -97,10 +99,30 @@ function LogCard({ item, studentName }) {
   };
 
   const MOOD_LABEL = {
+    muito_leve: '😴 Muito Leve',
     leve: '😌 Tranquilo',
     moderado: '💪 Moderado',
+    pesado: '🔥 Pesado',
     dificil: '😤 Difícil',
     exaustao: '🥵 Exaustão máxima',
+    exaustivo: '🥵 Exaustivo',
+  };
+
+  // Estado local para edição da resposta do personal
+  const [editingReply, setEditingReply] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [savingReply, setSavingReply] = useState(false);
+
+  const saveReply = async () => {
+    setSavingReply(true);
+    await supabase
+      .from('workout_logs')
+      .update({ personal_reply: replyText.trim() || null })
+      .eq('id', item.id);
+    setSavingReply(false);
+    setEditingReply(false);
+    // Recarrega logDetail localmente
+    setLogDetail((prev) => ({ ...prev, personal_reply: replyText.trim() || null }));
   };
 
   return (
@@ -181,6 +203,71 @@ function LogCard({ item, studentName }) {
                       Motivo da troca de dia: {logDetail.day_change_reason}
                     </Text>
                   ) : null}
+
+                  {/* ── Resposta do Personal ── */}
+                  <View style={styles.personalReplyBlock}>
+                    <View style={styles.personalReplyLabelRow}>
+                      <Feather name="message-square" size={s(12)} color={logDetail?.personal_reply ? colors.accent : colors.textFaint} />
+                      <Text style={[styles.personalReplyLabel, { color: logDetail?.personal_reply ? colors.accent : colors.textFaint }]}>
+                        {logDetail?.personal_reply ? 'Sua resposta' : 'Adicionar resposta ao aluno'}
+                      </Text>
+                      {!editingReply && (
+                        <TouchableOpacity
+                          onPress={() => {
+                            setReplyText(logDetail?.personal_reply || '');
+                            setEditingReply(true);
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Feather name="edit-3" size={s(12)} color={colors.textDim} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    {editingReply ? (
+                      <View style={styles.replyEditBox}>
+                        <TextInput
+                          style={styles.replyInput}
+                          value={replyText}
+                          onChangeText={setReplyText}
+                          placeholder="Escreva seu feedback para o aluno..."
+                          placeholderTextColor={colors.textDim2}
+                          multiline
+                          autoFocus
+                        />
+                        <View style={styles.replyEditActions}>
+                          <TouchableOpacity
+                            style={styles.replyCancelBtn}
+                            onPress={() => setEditingReply(false)}
+                          >
+                            <Text style={styles.replyCancelText}>Cancelar</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.replySaveBtn}
+                            onPress={saveReply}
+                            disabled={savingReply}
+                          >
+                            <Text style={styles.replySaveText}>{savingReply ? 'Salvando...' : 'Enviar'}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ) : logDetail?.personal_reply ? (
+                      <View style={styles.replyBubble}>
+                        <Text style={styles.replyText}>{logDetail.personal_reply}</Text>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.replyEmptyBtn}
+                        onPress={() => {
+                          setReplyText('');
+                          setEditingReply(true);
+                        }}
+                      >
+                        <Feather name="plus" size={s(12)} color={colors.accent} />
+                        <Text style={styles.replyEmptyBtnText}>Responder este treino</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
               )}
 
@@ -323,12 +410,12 @@ export default function StudentHistoryScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 18, paddingTop: 60 },
-  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginLeft: -4 },
-  back: { color: colors.text, fontSize: 15, marginLeft: 2 },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 14 },
+  container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: s(18), paddingTop: screenPaddingTop },
+  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: vs(16), marginLeft: -4 },
+  back: { color: colors.text, fontSize: fs(13), marginLeft: 2 },
+  title: { fontSize: fs(20), fontWeight: '800', color: colors.text, marginBottom: vs(14) },
 
-  summaryRow: { flexDirection: 'row', marginBottom: 12, gap: 8 },
+  summaryRow: { flexDirection: 'row', marginBottom: vs(12), gap: 8 },
   summaryCard: {
     flex: 1,
     backgroundColor: colors.surface,
@@ -341,18 +428,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,100,180,0.08)',
     borderColor: 'rgba(255,100,180,0.3)',
   },
-  summaryValue: { color: colors.text, fontSize: 20, fontWeight: '800' },
-  summaryLabel: { color: colors.textDim, fontSize: 10.5, marginTop: 4, lineHeight: 14 },
+  summaryValue: { color: colors.text, fontSize: fs(18), fontWeight: '800' },
+  summaryLabel: { color: colors.textDim, fontSize: fs(9), marginTop: vs(4), lineHeight: 14 },
 
   tapHint: {
     color: colors.textDim2,
-    fontSize: 11,
-    marginBottom: 10,
+    fontSize: fs(9),
+    marginBottom: vs(10),
     textAlign: 'center',
     fontStyle: 'italic',
   },
 
-  empty: { color: colors.textDim, textAlign: 'center', marginTop: 40, fontSize: 14 },
+  empty: { color: colors.textDim, textAlign: 'center', marginTop: vs(40), fontSize: fs(12) },
 
   // Cards
   card: {
@@ -361,7 +448,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     padding: 14,
-    marginBottom: 10,
+    marginBottom: vs(10),
   },
   cardDone: { borderLeftWidth: 3, borderLeftColor: colors.accent },
   cardSkipped: {
@@ -370,48 +457,48 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,100,180,0.05)',
   },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  cardTitle: { color: colors.text, fontSize: 14.5, fontWeight: '700' },
-  cardSubtitle: { color: colors.textDim, fontSize: 11.5, marginTop: 2 },
-  reasonText: { color: '#FF64B4', fontSize: 11, marginTop: 4, fontStyle: 'italic' },
+  cardTitle: { color: colors.text, fontSize: fs(12.5), fontWeight: '700' },
+  cardSubtitle: { color: colors.textDim, fontSize: fs(9.5), marginTop: vs(2) },
+  reasonText: { color: '#FF64B4', fontSize: fs(9), marginTop: vs(4), fontStyle: 'italic' },
   dayChangePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 5,
+    marginTop: vs(5),
     backgroundColor: colors.amberGlow,
     alignSelf: 'flex-start',
-    paddingHorizontal: 7,
-    paddingVertical: 3,
+    paddingHorizontal: s(7),
+    paddingVertical: vs(3),
     borderRadius: 100,
   },
-  dayChangePillText: { color: colors.amber, fontSize: 10, fontWeight: '700' },
+  dayChangePillText: { color: colors.amber, fontSize: fs(9), fontWeight: '700' },
 
   badgeDone: {
     backgroundColor: colors.accentGlow,
     borderRadius: radius.sm - 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: s(8),
+    paddingVertical: vs(4),
   },
-  badgeDoneText: { color: colors.accent, fontSize: 11, fontWeight: '700' },
+  badgeDoneText: { color: colors.accent, fontSize: fs(9), fontWeight: '700' },
   badgePending: {
     backgroundColor: colors.amberGlow,
     borderRadius: radius.sm - 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: s(8),
+    paddingVertical: vs(4),
   },
-  badgePendingText: { color: colors.amber, fontSize: 11, fontWeight: '700' },
+  badgePendingText: { color: colors.amber, fontSize: fs(9), fontWeight: '700' },
   badgeSkipped: {
     backgroundColor: 'rgba(255,100,180,0.15)',
     borderRadius: radius.sm - 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: s(8),
+    paddingVertical: vs(4),
   },
-  badgeSkippedText: { color: '#FF64B4', fontSize: 11, fontWeight: '700' },
+  badgeSkippedText: { color: '#FF64B4', fontSize: fs(9), fontWeight: '700' },
 
   // Expanded
   expandedBody: {
-    marginTop: 14,
-    paddingTop: 14,
+    marginTop: vs(14),
+    paddingTop: vs(14),
     borderTopWidth: 1,
     borderTopColor: colors.border,
     borderStyle: 'dashed',
@@ -421,59 +508,137 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentGlow,
     borderRadius: radius.sm,
     padding: 12,
-    marginBottom: 12,
+    marginBottom: vs(12),
     borderWidth: 1,
     borderColor: 'rgba(51,226,139,0.25)',
   },
   feedbackBoxTitle: {
     color: colors.accent,
-    fontSize: 11.5,
+    fontSize: fs(9.5),
     fontWeight: '700',
-    marginBottom: 6,
+    marginBottom: vs(6),
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
-  feedbackMood: { color: colors.text, fontSize: 13, fontWeight: '600', marginBottom: 4 },
+  feedbackMood: { color: colors.text, fontSize: fs(11), fontWeight: '600', marginBottom: vs(4) },
   feedbackComment: {
     color: colors.textDim,
-    fontSize: 13,
+    fontSize: fs(11),
     fontStyle: 'italic',
     lineHeight: 18,
-    marginBottom: 4,
+    marginBottom: vs(4),
   },
-  feedbackDayChange: { color: colors.amber, fontSize: 12, marginTop: 4 },
+  feedbackDayChange: { color: colors.amber, fontSize: fs(10), marginTop: vs(4) },
 
-  notesBlock: { marginBottom: 12 },
-  blockLabel: {
-    color: colors.textDim2,
-    fontSize: 10.5,
+  // ── Resposta do Personal ──────────────────────────────────────
+  personalReplyBlock: {
+    marginTop: vs(12),
+    paddingTop: vs(12),
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  personalReplyLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: s(6),
+    marginBottom: vs(8),
+  },
+  personalReplyLabel: {
+    fontSize: fs(10),
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 8,
+    flex: 1,
   },
-  noteRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 5 },
-  noteText: { color: colors.textDim, fontSize: 12.5, flex: 1, lineHeight: 17 },
+  replyBubble: {
+    backgroundColor: colors.accentGlow,
+    borderRadius: ms(10),
+    borderWidth: 1,
+    borderColor: colors.accentDark,
+    paddingHorizontal: s(12),
+    paddingVertical: vs(10),
+  },
+  replyText: {
+    color: colors.text,
+    fontSize: fs(11.5),
+    lineHeight: 18,
+    fontStyle: 'italic',
+  },
+  replyEmptyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: s(6),
+    backgroundColor: colors.accentGlow,
+    borderRadius: ms(10),
+    borderWidth: 1,
+    borderColor: colors.accent + '44',
+    paddingHorizontal: s(12),
+    paddingVertical: vs(10),
+    alignSelf: 'flex-start',
+  },
+  replyEmptyBtnText: { color: colors.accent, fontSize: fs(10.5), fontWeight: '700' },
+  replyEditBox: { gap: vs(8) },
+  replyInput: {
+    backgroundColor: colors.surface,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: ms(10),
+    paddingHorizontal: s(12),
+    paddingVertical: vs(10),
+    fontSize: fs(11.5),
+    minHeight: vs(70),
+    textAlignVertical: 'top',
+  },
+  replyEditActions: { flexDirection: 'row', gap: s(8) },
+  replyCancelBtn: {
+    flex: 1,
+    backgroundColor: colors.surface3,
+    borderRadius: ms(8),
+    paddingVertical: vs(10),
+    alignItems: 'center',
+  },
+  replyCancelText: { color: colors.textDim, fontSize: fs(11), fontWeight: '600' },
+  replySaveBtn: {
+    flex: 2,
+    backgroundColor: colors.accent,
+    borderRadius: ms(8),
+    paddingVertical: vs(10),
+    alignItems: 'center',
+  },
+  replySaveText: { color: '#04170F', fontSize: fs(11), fontWeight: '700' },
+
+  notesBlock: { marginBottom: vs(12) },
+  blockLabel: {
+    color: colors.textDim2,
+    fontSize: fs(9),
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: vs(8),
+  },
+  noteRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: vs(5) },
+  noteText: { color: colors.textDim, fontSize: fs(10.5), flex: 1, lineHeight: 17 },
 
   exerciseBlock: {
     backgroundColor: colors.surface2,
     borderRadius: radius.sm,
     padding: 12,
-    marginBottom: 8,
+    marginBottom: vs(8),
     borderWidth: 1,
     borderColor: colors.border,
     borderLeftWidth: 3,
     borderLeftColor: colors.accent,
   },
-  exerciseName: { color: colors.text, fontSize: 13.5, fontWeight: '700', marginBottom: 6 },
+  exerciseName: { color: colors.text, fontSize: fs(11.5), fontWeight: '700', marginBottom: vs(6) },
   setRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 5,
+    paddingVertical: vs(5),
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  setLabel: { color: colors.textDim, fontSize: 12 },
-  setValue: { color: colors.accent, fontSize: 12, fontWeight: '700' },
-  emptyDetail: { color: colors.textDim, fontSize: 13, textAlign: 'center', paddingVertical: 10 },
+  setLabel: { color: colors.textDim, fontSize: fs(10) },
+  setValue: { color: colors.accent, fontSize: fs(10), fontWeight: '700' },
+  emptyDetail: { color: colors.textDim, fontSize: fs(11), textAlign: 'center', paddingVertical: vs(10) },
 });

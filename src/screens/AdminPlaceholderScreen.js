@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 export default function AdminPlaceholderScreen() {
   const { profile, signOut } = useAuth();
@@ -32,10 +33,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentGlow,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 18,
+    marginBottom: vs(18),
   },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 12 },
-  message: { fontSize: 15, color: colors.textDim, textAlign: 'center', lineHeight: 22, marginBottom: 32 },
-  logoutButton: { marginTop: 20, padding: 12 },
-  logoutText: { color: colors.red, fontSize: 14, fontWeight: '700' },
+  title: { fontSize: fs(20), fontWeight: '800', color: colors.text, marginBottom: vs(12) },
+  message: { fontSize: fs(13), color: colors.textDim, textAlign: 'center', lineHeight: 22, marginBottom: vs(32) },
+  logoutButton: { marginTop: vs(20), padding: 12 },
+  logoutText: { color: colors.red, fontSize: fs(12), fontWeight: '700' },
 });

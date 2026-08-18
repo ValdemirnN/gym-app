@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, TextInput, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 // Troque esse número pelo WhatsApp de quem vai atender o suporte técnico
 // (você mesmo, ou quem cuida do app no dia a dia).
@@ -127,23 +128,23 @@ export default function FaqScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: 60 },
-  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, marginLeft: -4 },
-  back: { color: colors.text, fontSize: 15, marginLeft: 2 },
-  title: { fontSize: 20, fontWeight: '800', color: colors.text, marginBottom: 16 },
-  sectionTitle: { color: colors.textDim, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', marginBottom: 10 },
+  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: screenPaddingTop },
+  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: vs(10), marginLeft: -4 },
+  back: { color: colors.text, fontSize: fs(13), marginLeft: 2 },
+  title: { fontSize: fs(18), fontWeight: '800', color: colors.text, marginBottom: vs(16) },
+  sectionTitle: { color: colors.textDim, fontSize: fs(10), fontWeight: '700', textTransform: 'uppercase', marginBottom: vs(10) },
   faqCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
     padding: 14,
-    marginBottom: 8,
+    marginBottom: vs(8),
   },
   faqHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  faqQuestion: { color: colors.text, fontSize: 13.5, fontWeight: '600', flex: 1, marginRight: 10 },
-  faqAnswer: { color: colors.textDim, fontSize: 12.5, marginTop: 10, lineHeight: 18 },
-  supportDesc: { color: colors.textDim, fontSize: 12.5, marginBottom: 10, lineHeight: 18 },
+  faqQuestion: { color: colors.text, fontSize: fs(11.5), fontWeight: '600', flex: 1, marginRight: 10 },
+  faqAnswer: { color: colors.textDim, fontSize: fs(10.5), marginTop: vs(10), lineHeight: 18 },
+  supportDesc: { color: colors.textDim, fontSize: fs(10.5), marginBottom: vs(10), lineHeight: 18 },
   textArea: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -151,10 +152,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     padding: 12,
     color: colors.text,
-    fontSize: 13.5,
+    fontSize: fs(11.5),
     height: 90,
     textAlignVertical: 'top',
-    marginBottom: 12,
+    marginBottom: vs(12),
   },
   whatsappButton: {
     flexDirection: 'row',
@@ -162,10 +163,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#25D366',
     borderRadius: radius.sm,
-    paddingVertical: 13,
-    marginBottom: 10,
+    paddingVertical: vs(13),
+    marginBottom: vs(10),
   },
-  whatsappButtonText: { color: '#04170F', fontWeight: '700', fontSize: 14 },
+  whatsappButtonText: { color: '#04170F', fontWeight: '700', fontSize: fs(12) },
   emailButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -174,7 +175,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.sm,
-    paddingVertical: 13,
+    paddingVertical: vs(13),
   },
-  emailButtonText: { color: colors.text, fontWeight: '600', fontSize: 14 },
+  emailButtonText: { color: colors.text, fontWeight: '600', fontSize: fs(12) },
 });

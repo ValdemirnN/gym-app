@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 const DAY_ORDER = ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo'];
 const DAY_LABEL = {
@@ -146,8 +147,8 @@ export default function BlockDaysScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, paddingTop: 56 },
-  topbar: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingHorizontal: 18, marginBottom: 4 },
+  container: { flex: 1, backgroundColor: colors.bg, paddingTop: screenPaddingTop },
+  topbar: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingHorizontal: s(18), marginBottom: vs(4) },
   backBtn: {
     width: 34,
     height: 34,
@@ -157,13 +158,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
+    marginTop: vs(2),
   },
-  eyebrow: { color: colors.textDim2, fontSize: 10.5, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase' },
-  title: { color: colors.text, fontSize: 19, fontWeight: '800', marginTop: 2 },
+  eyebrow: { color: colors.textDim2, fontSize: fs(9), fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase' },
+  title: { color: colors.text, fontSize: fs(17), fontWeight: '800', marginTop: vs(2) },
   summaryCard: {
     marginHorizontal: 18,
-    marginTop: 14,
+    marginTop: vs(14),
     padding: 16,
     borderRadius: 20,
     backgroundColor: colors.surface,
@@ -171,31 +172,31 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   summaryCardCurrent: { borderColor: 'rgba(51,226,139,.35)' },
-  summaryTitle: { color: colors.text, fontSize: 17, fontWeight: '700', marginTop: 2 },
-  summaryMeta: { color: colors.textDim, fontSize: 12, marginTop: 6 },
+  summaryTitle: { color: colors.text, fontSize: fs(15), fontWeight: '700', marginTop: vs(2) },
+  summaryMeta: { color: colors.textDim, fontSize: fs(10), marginTop: vs(6) },
   statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     alignSelf: 'flex-start',
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    paddingHorizontal: s(9),
+    paddingVertical: vs(4),
     borderRadius: 100,
-    marginBottom: 6,
+    marginBottom: vs(6),
   },
   statusPillCurrent: { backgroundColor: colors.amberGlow ?? 'rgba(253,180,78,0.14)' },
   statusPillPast: { backgroundColor: 'rgba(141,150,166,.14)' },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusPillText: { fontSize: 10, fontWeight: '700' },
+  statusPillText: { fontSize: fs(9), fontWeight: '700' },
 
   sectionHeader: {
     color: colors.textDim2,
-    fontSize: 10.5,
+    fontSize: fs(9),
     fontWeight: '700',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-    marginTop: 22,
-    marginBottom: 10,
+    marginTop: vs(22),
+    marginBottom: vs(10),
     marginHorizontal: 18,
   },
 
@@ -206,7 +207,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     marginHorizontal: 18,
-    marginBottom: 10,
+    marginBottom: vs(10),
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
@@ -222,8 +223,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  dayBadgeText: { color: colors.accent, fontSize: 10, fontWeight: '700' },
-  dayLabel: { color: colors.textDim2, fontSize: 10.5, fontWeight: '600', textTransform: 'uppercase' },
-  workoutName: { color: colors.text, fontSize: 14.5, fontWeight: '700', marginTop: 2 },
-  workoutExec: { color: colors.textDim2, fontSize: 11, marginTop: 4 },
+  dayBadgeText: { color: colors.accent, fontSize: fs(9), fontWeight: '700' },
+  dayLabel: { color: colors.textDim2, fontSize: fs(9), fontWeight: '600', textTransform: 'uppercase' },
+  workoutName: { color: colors.text, fontSize: fs(12.5), fontWeight: '700', marginTop: vs(2) },
+  workoutExec: { color: colors.textDim2, fontSize: fs(9), marginTop: vs(4) },
 });

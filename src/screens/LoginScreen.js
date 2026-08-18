@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, KeyboardAvo
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { colors, radius, spacing } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -76,16 +77,16 @@ const styles = StyleSheet.create({
 
   logoChip: {
     alignSelf: 'center',
-    width: 60,
-    height: 60,
+    width: s(60),
+    height: s(60),
     borderRadius: radius.lg,
     backgroundColor: colors.accentGlow,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 18,
+    marginBottom: vs(18),
   },
-  title: { fontSize: 26, fontWeight: '800', color: colors.text, textAlign: 'center', marginBottom: 4 },
-  subtitle: { fontSize: 14.5, color: colors.textDim, textAlign: 'center', marginBottom: 32 },
+  title: { fontSize: fs(24), fontWeight: '800', color: colors.text, textAlign: 'center', marginBottom: vs(4) },
+  subtitle: { fontSize: fs(12.5), color: colors.textDim, textAlign: 'center', marginBottom: vs(32) },
 
   inputWrap: {
     flexDirection: 'row',
@@ -94,27 +95,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.sm,
-    paddingHorizontal: 14,
-    marginBottom: 12,
+    paddingHorizontal: s(14),
+    marginBottom: vs(12),
   },
   inputIcon: { marginRight: 10 },
-  input: { flex: 1, color: colors.text, paddingVertical: 14, fontSize: 15.5 },
+  input: { flex: 1, color: colors.text, paddingVertical: vs(14), fontSize: fs(13.5) },
 
-  forgotLink: { color: colors.accent, textAlign: 'right', marginBottom: 22, fontSize: 13, fontWeight: '600' },
+  forgotLink: { color: colors.accent, textAlign: 'right', marginBottom: vs(22), fontSize: fs(11), fontWeight: '600' },
 
   button: {
     backgroundColor: colors.accent,
     borderRadius: radius.sm,
-    paddingVertical: 16,
+    paddingVertical: vs(16),
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: vs(4),
     shadowColor: colors.accentDark,
     shadowOpacity: 0.35,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
     elevation: 4,
   },
-  buttonText: { color: '#04170F', fontWeight: '700', fontSize: 16 },
+  buttonText: { color: '#04170F', fontWeight: '700', fontSize: fs(14) },
 
-  link: { color: colors.accent, textAlign: 'center', marginTop: 22, fontSize: 14, fontWeight: '600' },
+  link: { color: colors.accent, textAlign: 'center', marginTop: vs(22), fontSize: fs(12), fontWeight: '600' },
 });

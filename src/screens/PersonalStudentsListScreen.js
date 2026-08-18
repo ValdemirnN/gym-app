@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import Avatar from '../components/Avatar';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 const STATUS_LABEL = {
   aprovado: { text: 'Ativo', color: colors.accent, glow: colors.accentGlow },
@@ -159,10 +160,10 @@ export default function PersonalStudentsListScreen({ navigation }) {
               activeOpacity={0.8}
               onPress={() => navigation.navigate('StudentDetail', { studentId: item.id, studentName: item.name })}
             >
-              <Avatar uri={item.avatar_url} size={44} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>{item.name || 'Aluno sem nome'}</Text>
-                <Text style={styles.cardSubtitle}>{item.email}</Text>
+              <Avatar uri={item.avatar_url} size={s(42)} />
+              <View style={styles.cardInfo}>
+                <Text style={styles.cardTitle} numberOfLines={1}>{item.name || 'Aluno sem nome'}</Text>
+                <Text style={styles.cardSubtitle} numberOfLines={1}>{item.email}</Text>
               </View>
               {!item.is_excluded && (
                 <View style={[styles.badge, { backgroundColor: status.glow }]}>
@@ -198,8 +199,8 @@ export default function PersonalStudentsListScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: 60 },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 16 },
+  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: screenPaddingTop },
+  title: { fontSize: fs(20), fontWeight: '800', color: colors.text, marginBottom: vs(16) },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -207,38 +208,44 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.sm,
-    paddingHorizontal: 14,
-    marginBottom: 12,
+    paddingHorizontal: s(14),
+    marginBottom: vs(12),
   },
-  search: { flex: 1, color: colors.text, paddingVertical: 12, fontSize: 15 },
-  tabs: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  search: { flex: 1, color: colors.text, paddingVertical: vs(12), fontSize: fs(13) },
+  tabs: { flexDirection: 'row', gap: 8, marginBottom: vs(16) },
   tab: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: s(12),
+    paddingVertical: vs(7),
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
   tabActive: { borderColor: colors.accent, backgroundColor: colors.accentGlow },
-  tabText: { color: colors.textDim, fontSize: 12.5, fontWeight: '600' },
+  tabText: { color: colors.textDim, fontSize: fs(10.5), fontWeight: '600' },
   tabTextActive: { color: colors.accent },
-  empty: { color: colors.textDim, textAlign: 'center', marginTop: 40, fontSize: 14, lineHeight: 20 },
+  empty: { color: colors.textDim, textAlign: 'center', marginTop: vs(40), fontSize: fs(12), lineHeight: 20 },
   card: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    padding: 16,
-    marginBottom: 10,
+    paddingHorizontal: s(14),
+    paddingVertical: vs(12),
+    marginBottom: vs(10),
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: s(10),
   },
-  cardTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  cardSubtitle: { color: colors.textDim, fontSize: 12, marginTop: 2 },
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill },
-  badgeText: { fontSize: 11, fontWeight: '700' },
-  whatsappButton: { padding: 6 },
-  excludeButton: { padding: 6 },
+  // Bloco de texto: flex:1 + minWidth:0 garante truncamento correto do email
+  cardInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  cardTitle: { color: colors.text, fontSize: fs(12), fontWeight: '700' },
+  cardSubtitle: { color: colors.textDim, fontSize: fs(10), marginTop: vs(2) },
+  badge: { paddingHorizontal: s(10), paddingVertical: vs(4), borderRadius: radius.pill, flexShrink: 0 },
+  badgeText: { fontSize: fs(9), fontWeight: '700' },
+  whatsappButton: { padding: s(6), flexShrink: 0 },
+  excludeButton: { padding: s(6), flexShrink: 0 },
 });

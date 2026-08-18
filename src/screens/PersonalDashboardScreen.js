@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import Avatar from '../components/Avatar';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 function formatDate(dateStr) {
   const d = new Date(dateStr);
@@ -15,12 +16,8 @@ function formatDate(dateStr) {
 export default function PersonalDashboardScreen({ navigation }) {
   const { session, profile } = useAuth();
   const [stats, setStats] = useState({
-    total: 0,
-    ativos: 0,
-    pendentes: 0,
-    treinosSemana: 0,
-    consistencia: 0,
-    metaTreinos: 0,
+    total: 0, ativos: 0, pendentes: 0,
+    treinosSemana: 0, consistencia: 0, metaTreinos: 0,
   });
   const [unreadCount, setUnreadCount] = useState(0);
   const [recent, setRecent] = useState([]);
@@ -32,10 +29,7 @@ export default function PersonalDashboardScreen({ navigation }) {
       .select('id, name, status, avatar_url, is_excluded')
       .eq('personal_id', session.user.id);
 
-    // Alunos excluídos não entram nas contagens do dashboard (mas continuam
-    // cadastrados, só saem das listas/estatísticas de quem tá ativo).
     const clients = (clientsRaw || []).filter((c) => !c.is_excluded);
-
     const total = clients?.length || 0;
     const ativos = clients?.filter((c) => c.status === 'aprovado').length || 0;
     const pendentes = clients?.filter((c) => c.status === 'pendente').length || 0;
@@ -54,12 +48,12 @@ export default function PersonalDashboardScreen({ navigation }) {
         .in('user_id', clientIds)
         .gte('started_at', seteDiasAtras.toISOString())
         .not('finished_at', 'is', null)
-        .is('skipped', false); // Só conta como consistência se NÃO foi pulado
+        .is('skipped', false);
       treinosSemana = count || 0;
 
       const { data: recentLogs } = await supabase
         .from('workout_logs')
-        .select('id, started_at, finished_at, skipped, skip_reason, user_id, workouts(name)') // Puxando o status de pulado
+        .select('id, started_at, finished_at, skipped, skip_reason, user_id, workouts(name)')
         .in('user_id', clientIds)
         .order('started_at', { ascending: false })
         .limit(5);
@@ -74,9 +68,6 @@ export default function PersonalDashboardScreen({ navigation }) {
       setRecent([]);
     }
 
-    // Calcula a consistência usando a meta REAL de treinos de cada aluno ativo
-    // (antes assumia 3 por aluno fixo, o que dava número errado pra quem tem
-    // mais ou menos que 3 treinos cadastrados na semana).
     let metaTreinos = 0;
     const activeIds = (clients || []).filter((c) => c.status === 'aprovado').map((c) => c.id);
     if (activeIds.length > 0) {
@@ -91,7 +82,6 @@ export default function PersonalDashboardScreen({ navigation }) {
       percentual = Math.min(Math.round((treinosSemana / metaTreinos) * 100), 100);
     }
 
-    // Busca quantidade de notificações não lidas
     const { count: unread } = await supabase
       .from('notifications')
       .select('id', { count: 'exact', head: true })
@@ -99,15 +89,10 @@ export default function PersonalDashboardScreen({ navigation }) {
       .eq('is_read', false);
     setUnreadCount(unread || 0);
 
-    // Atualiza os stats com a consistência calculada
     setStats({ total, ativos, pendentes, treinosSemana, consistencia: percentual, metaTreinos });
   }, [session]);
 
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load])
-  );
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -125,52 +110,39 @@ export default function PersonalDashboardScreen({ navigation }) {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={{ padding: 20, paddingTop: 60, paddingBottom: 40 }}
+      contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
     >
+      {/* Header */}
       <View style={styles.greetingRow}>
         <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-          <Avatar uri={profile?.avatar_url} size={52} />
-          <View style={{ marginLeft: 12, flex: 1 }}>
-            <Text style={styles.greeting} numberOfLines={1}>Olá, {profile?.name || 'treinador'} 👋</Text>
+          <Avatar uri={profile?.avatar_url} size={s(isSmallDevice ? 44 : 52)} />
+          <View style={{ marginLeft: s(12), flex: 1 }}>
+            <Text style={styles.greeting} numberOfLines={1}>
+              Olá, {profile?.name || 'treinador'} 👋
+            </Text>
           </View>
         </View>
 
-        <TouchableOpacity 
-          style={styles.bellIconContainer} 
+        <TouchableOpacity
+          style={styles.bellIconContainer}
           onPress={() => navigation.navigate('NotificationsScreen')}
           activeOpacity={0.7}
         >
-          <Ionicons name="notifications-outline" size={24} color={colors.text} />
+          <Ionicons name="notifications-outline" size={s(isSmallDevice ? 20 : 24)} color={colors.text} />
           {unreadCount > 0 && (
             <View style={styles.notificationBadge}>
-              <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>
+              <Text style={styles.badgeCount}>
                 {unreadCount > 9 ? '9+' : unreadCount}
               </Text>
             </View>
           )}
         </TouchableOpacity>
       </View>
+
       <Text style={styles.subtitle}>Aqui está o resumo da sua carteira de alunos</Text>
 
-      {/* Banner de alerta de vencimento */}
-      <TouchableOpacity
-        style={styles.alertBanner}
-        onPress={() => navigation.navigate('PersonalFinancialScreen')}
-        activeOpacity={0.85}
-      >
-        <View style={styles.alertIcon}>
-          <Feather name="alert-triangle" size={18} color={colors.amber} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.alertTitle}>Seu acesso vence em 3 dias</Text>
-          <Text style={styles.alertSub}>
-            Renove para continuar liberando treinos aos seus alunos sem interrupção.
-          </Text>
-        </View>
-        <Feather name="chevron-right" size={18} color={colors.amber} style={{ marginLeft: 8 }} />
-      </TouchableOpacity>
-
+      {/* Grid de estatísticas */}
       <View style={styles.grid}>
         <View style={[styles.card, styles.cardGreen]}>
           <Text style={styles.cardValue}>{stats.total}</Text>
@@ -190,7 +162,7 @@ export default function PersonalDashboardScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Novo Card de Consistência inserido logo após o grid */}
+      {/* Card de consistência */}
       <View style={styles.consistencyCard}>
         <View style={styles.consistencyCircle}>
           <Text style={styles.consistencyPercentage}>{stats.consistencia}%</Text>
@@ -203,9 +175,10 @@ export default function PersonalDashboardScreen({ navigation }) {
         </View>
       </View>
 
+      {/* Aviso de pendentes */}
       {stats.pendentes > 0 && (
         <View style={styles.tip}>
-          <Feather name="alert-triangle" size={15} color={colors.amber} />
+          <Feather name="alert-triangle" size={s(14)} color={colors.amber} />
           <Text style={styles.tipText}>
             {' '}Você tem {stats.pendentes} aluno{stats.pendentes > 1 ? 's' : ''} pendente
             {stats.pendentes > 1 ? 's' : ''} de pagamento. Vá até a aba "Alunos" para revisar.
@@ -213,23 +186,34 @@ export default function PersonalDashboardScreen({ navigation }) {
         </View>
       )}
 
+      {/* Ações rápidas */}
       <View style={styles.quickActionsRow}>
-        <TouchableOpacity style={styles.quickAction} onPress={() => navigation.navigate('PersonalStudents')} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={styles.quickAction}
+          onPress={() => navigation.navigate('PersonalStudents')}
+          activeOpacity={0.8}
+        >
           <View style={styles.quickActionIcon}>
-            <Feather name="users" size={19} color={colors.accent} />
+            <Feather name="users" size={s(isSmallDevice ? 16 : 19)} color={colors.accent} />
           </View>
           <Text style={styles.quickActionText}>Ver alunos</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.quickAction} onPress={() => navigation.navigate('Challenges')} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={styles.quickAction}
+          onPress={() => navigation.navigate('Challenges')}
+          activeOpacity={0.8}
+        >
           <View style={styles.quickActionIcon}>
-            <Feather name="award" size={19} color={colors.accent} />
+            <Feather name="award" size={s(isSmallDevice ? 16 : 19)} color={colors.accent} />
           </View>
           <Text style={styles.quickActionText}>Desafios</Text>
         </TouchableOpacity>
       </View>
 
+      {/* Atividade recente */}
       <Text style={styles.sectionTitle}>Atividade recente</Text>
       <Text style={styles.subtitle2}>Toque em um treino para ver o detalhamento completo</Text>
+
       {recent.length === 0 ? (
         <View style={styles.emptyBox}>
           <Text style={styles.emptyText}>
@@ -238,16 +222,20 @@ export default function PersonalDashboardScreen({ navigation }) {
         </View>
       ) : (
         recent.map((log) => (
-          <TouchableOpacity key={log.id} style={styles.activityCard} activeOpacity={0.8} onPress={() => goToLog(log)}>
-            <Avatar uri={log.studentAvatar} size={40} />
-            <View style={{ flex: 1, marginLeft: 12 }}>
+          <TouchableOpacity
+            key={log.id}
+            style={styles.activityCard}
+            activeOpacity={0.8}
+            onPress={() => goToLog(log)}
+          >
+            <Avatar uri={log.studentAvatar} size={s(isSmallDevice ? 34 : 40)} />
+            <View style={{ flex: 1, marginLeft: s(12) }}>
               <Text style={styles.activityTitle}>{log.studentName}</Text>
               <Text style={styles.activitySubtitle}>
                 {log.workouts?.name || 'Treino removido'} · {formatDate(log.started_at)}
               </Text>
             </View>
-            
-            {/* Lógica corrigida para exibir o status correto */}
+
             {log.skipped ? (
               <View style={styles.badgeBlocked}>
                 <Text style={styles.badgeTextBlocked}>Não treinou</Text>
@@ -261,23 +249,33 @@ export default function PersonalDashboardScreen({ navigation }) {
                 <Text style={styles.badgePendingText}>Em andamento</Text>
               </View>
             )}
-
           </TouchableOpacity>
         ))
       )}
     </ScrollView>
-  ); // <--- ADICIONE ESTA LINHA
-} // <--- ADICIONE ESTA LINHA
+  );
+}
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  greetingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  
+  content: {
+    paddingHorizontal: screenPaddingH,
+    paddingTop: screenPaddingTop,
+    paddingBottom: vs(40),
+  },
+
+  greetingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: vs(4),
+  },
+
   bellIconContainer: {
     position: 'relative',
-    padding: 8,
+    padding: s(8),
     backgroundColor: colors.surface,
-    borderRadius: 12,
+    borderRadius: ms(12),
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -287,129 +285,113 @@ const styles = StyleSheet.create({
     right: -4,
     backgroundColor: '#EF4444',
     borderRadius: 10,
-    minWidth: 18,
-    height: 18,
+    minWidth: s(18),
+    height: s(18),
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
     borderColor: colors.surface,
   },
+  badgeCount: { color: '#FFF', fontSize: fs(9), fontWeight: 'bold' },
 
-  greeting: { fontSize: 18, fontWeight: '800', color: colors.text },
-  subtitle: { fontSize: 14, color: colors.textDim, marginTop: 4, marginBottom: 24 },
+  greeting: { fontSize: fs(isSmallDevice ? 16 : 18), fontWeight: '800', color: colors.text },
+  subtitle: { fontSize: fs(isSmallDevice ? 12 : 14), color: colors.textDim, marginTop: vs(4), marginBottom: vs(20) },
+
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   card: {
     width: '48%',
     backgroundColor: colors.surface,
     borderRadius: radius.md,
-    padding: 18,
-    marginBottom: 14,
+    padding: s(isSmallDevice ? 14 : 18),
+    marginBottom: vs(12),
     borderWidth: 1,
     borderColor: colors.border,
   },
   cardGreen: { borderColor: colors.accent },
   cardAlert: { borderColor: colors.amber },
-  cardValue: { fontSize: 28, fontWeight: '800', color: colors.text },
-  cardLabel: { fontSize: 12, color: colors.textDim, marginTop: 4 },
-  
+  cardValue: { fontSize: fs(isSmallDevice ? 22 : 28), fontWeight: '800', color: colors.text },
+  cardLabel: { fontSize: fs(isSmallDevice ? 10 : 12), color: colors.textDim, marginTop: vs(4) },
+
   consistencyCard: {
     flexDirection: 'row',
-    backgroundColor: '#1C293A', 
+    backgroundColor: '#1C293A',
     borderRadius: radius.lg,
-    padding: 16,
+    padding: s(isSmallDevice ? 12 : 16),
     alignItems: 'center',
-    marginBottom: 20,
-    marginTop: 6,
+    marginBottom: vs(16),
+    marginTop: vs(4),
   },
   consistencyCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: s(isSmallDevice ? 50 : 60),
+    height: s(isSmallDevice ? 50 : 60),
+    borderRadius: s(isSmallDevice ? 25 : 30),
     borderWidth: 4,
     borderColor: '#3B82F6',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: s(14),
   },
-  consistencyPercentage: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+  consistencyPercentage: { color: '#FFF', fontWeight: 'bold', fontSize: fs(isSmallDevice ? 13 : 16) },
   consistencyTextContainer: { flex: 1 },
-  consistencyTitle: { color: '#FFF', fontWeight: 'bold', fontSize: 16, marginBottom: 4 },
-  consistencyDesc: { color: '#9CA3AF', fontSize: 13, lineHeight: 18 },
+  consistencyTitle: { color: '#FFF', fontWeight: 'bold', fontSize: fs(isSmallDevice ? 14 : 16), marginBottom: vs(4) },
+  consistencyDesc: { color: '#9CA3AF', fontSize: fs(isSmallDevice ? 11 : 13), lineHeight: vs(isSmallDevice ? 16 : 18) },
 
   tip: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     backgroundColor: colors.amberGlow,
     borderRadius: radius.sm,
-    padding: 16,
-    marginTop: 8,
+    padding: s(isSmallDevice ? 12 : 16),
+    marginTop: vs(6),
     borderLeftWidth: 3,
     borderLeftColor: colors.amber,
   },
-  tipText: { color: colors.amber, fontSize: 13, lineHeight: 19, flex: 1 },
-  quickActionsRow: { flexDirection: 'row', marginTop: 24, marginBottom: 8 },
+  tipText: { color: colors.amber, fontSize: fs(isSmallDevice ? 11 : 13), lineHeight: vs(isSmallDevice ? 17 : 19), flex: 1 },
+
+  quickActionsRow: { flexDirection: 'row', marginTop: vs(20), marginBottom: vs(6), gap: s(8) },
   quickAction: {
     flex: 1,
     backgroundColor: colors.surface,
     borderRadius: radius.md,
-    paddingVertical: 16,
+    paddingVertical: vs(isSmallDevice ? 12 : 16),
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
   },
   quickActionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: s(isSmallDevice ? 34 : 40),
+    height: s(isSmallDevice ? 34 : 40),
+    borderRadius: ms(12),
     backgroundColor: colors.accentGlow,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: vs(6),
   },
-  quickActionText: { color: colors.text, fontSize: 13, fontWeight: '700' },
-  sectionTitle: { color: colors.text, fontSize: 18, fontWeight: '800', marginTop: 24, marginBottom: 12 },
-  subtitle2: { color: colors.textDim2, fontSize: 12, marginTop: -8, marginBottom: 12 },
-  emptyBox: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, padding: 18 },
-  emptyText: { color: colors.textDim, fontSize: 13, lineHeight: 19 },
+  quickActionText: { color: colors.text, fontSize: fs(isSmallDevice ? 11 : 13), fontWeight: '700' },
+
+  sectionTitle: { color: colors.text, fontSize: fs(isSmallDevice ? 16 : 18), fontWeight: '800', marginTop: vs(20), marginBottom: vs(10) },
+  subtitle2: { color: colors.textDim2, fontSize: fs(isSmallDevice ? 11 : 12), marginTop: vs(-6), marginBottom: vs(10) },
+
+  emptyBox: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, padding: s(16) },
+  emptyText: { color: colors.textDim, fontSize: fs(isSmallDevice ? 12 : 13), lineHeight: vs(19) },
+
   activityCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.sm,
-    padding: 14,
-    marginBottom: 8,
+    padding: s(isSmallDevice ? 10 : 14),
+    marginBottom: vs(8),
     flexDirection: 'row',
     alignItems: 'center',
   },
-  activityTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  activitySubtitle: { color: colors.textDim, fontSize: 12, marginTop: 2 },
-  badgeDone: { backgroundColor: colors.accentGlow, borderRadius: radius.sm - 4, paddingHorizontal: 10, paddingVertical: 5 },
-  badgeDoneText: { color: colors.accent, fontSize: 11, fontWeight: '700' },
-  badgePending: { backgroundColor: colors.amberGlow, borderRadius: radius.sm - 4, paddingHorizontal: 10, paddingVertical: 5 },
-  badgePendingText: { color: colors.amber, fontSize: 11, fontWeight: '700' },
-  badgeBlocked: { backgroundColor: colors.redGlow, borderRadius: radius.sm - 4, paddingHorizontal: 10, paddingVertical: 5 },
-  badgeTextBlocked: { color: colors.red, fontSize: 11, fontWeight: '700' },
+  activityTitle: { color: colors.text, fontSize: fs(isSmallDevice ? 13 : 15), fontWeight: '700' },
+  activitySubtitle: { color: colors.textDim, fontSize: fs(isSmallDevice ? 11 : 12), marginTop: vs(2) },
 
-  // ---- banner de alerta de vencimento ----
-  alertBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.amberGlow,
-    borderWidth: 1,
-    borderColor: colors.amber + '55',
-    borderRadius: radius.md,
-    padding: 16,
-    marginBottom: 20,
-  },
-  alertIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: colors.amberGlow,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  alertTitle: { color: colors.text, fontWeight: '700', fontSize: 14.5 },
-  alertSub: { color: colors.amber, fontSize: 13, marginTop: 3, lineHeight: 18, opacity: 0.85 },
+  badgeDone: { backgroundColor: colors.accentGlow, borderRadius: ms(6), paddingHorizontal: s(10), paddingVertical: vs(5) },
+  badgeDoneText: { color: colors.accent, fontSize: fs(isSmallDevice ? 10 : 11), fontWeight: '700' },
+  badgePending: { backgroundColor: colors.amberGlow, borderRadius: ms(6), paddingHorizontal: s(10), paddingVertical: vs(5) },
+  badgePendingText: { color: colors.amber, fontSize: fs(isSmallDevice ? 10 : 11), fontWeight: '700' },
+  badgeBlocked: { backgroundColor: colors.redGlow, borderRadius: ms(6), paddingHorizontal: s(10), paddingVertical: vs(5) },
+  badgeTextBlocked: { color: colors.red, fontSize: fs(isSmallDevice ? 10 : 11), fontWeight: '700' },
 });

@@ -19,6 +19,7 @@ import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { colors, radius } from '../theme/theme';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
 const DAYS = [
   { key: 'segunda', label: 'S' },
@@ -53,7 +54,7 @@ const INTENSITIES = [
   { key: 'intensa', label: 'Intensa' },
 ];
 
-const STEPS = ['Info', 'Exercícios', 'Aeróbico', 'Revisão'];
+const STEPS = ['Info', 'Aquec.', 'Exercícios', 'Aeróbico', 'Revisão'];
 
 // Paleta usada para colorir grupos musculares dinamicamente (a base não tem
 // uma lista fixa de grupos, então geramos uma cor estável por nome).
@@ -152,6 +153,19 @@ export default function CreateWorkoutScreen({ route, navigation }) {
 
   const [comboTarget, setComboTarget] = useState(null); // exercício sendo vinculado a um combinado
 
+  // ── Estado de aquecimento ────────────────────────────────────────────────────
+  const [warmupSelected, setWarmupSelected] = useState([]); // exercícios marcados como aquecimento
+  const [warmupSearch, setWarmupSearch]     = useState('');
+  const [warmupOpenGroups, setWarmupOpenGroups] = useState({});
+  const [warmupNewName, setWarmupNewName]       = useState('');
+  const [warmupNewGroup, setWarmupNewGroup]     = useState('');
+  const [warmupNewType, setWarmupNewType]       = useState('forca');
+  const [warmupAddingEx, setWarmupAddingEx]     = useState(false);
+  const [warmupVideoSearch, setWarmupVideoSearch]     = useState('');
+  const [warmupSelectedVideo, setWarmupSelectedVideo] = useState(null);
+  const [warmupAttachTarget, setWarmupAttachTarget]   = useState(null);
+  const [warmupAttachSearch, setWarmupAttachSearch]   = useState('');
+  // ─────────────────────────────────────────────────────────────────────────────
   useFocusEffect(
     useCallback(() => {
       const loadExercises = async () => {
@@ -190,13 +204,15 @@ export default function CreateWorkoutScreen({ route, navigation }) {
       const { data: items } = await supabase
         .from('workout_exercises')
         .select(
-          'target_sets, target_reps, order_index, combo_group, target_duration_minutes, target_distance_km, target_intensity, exercises(id, name, muscle_group, exercise_type)'
+          'target_sets, target_reps, order_index, combo_group, target_duration_minutes, target_distance_km, target_intensity, is_warmup, exercises(id, name, muscle_group, exercise_type)'
         )
         .eq('workout_id', workoutId)
         .order('order_index');
       if (items) {
+        const normalItems = items.filter((it) => !it.is_warmup);
+        const warmupItems = items.filter((it) => it.is_warmup);
         setSelected(
-          items.map((it) => ({
+          normalItems.map((it) => ({
             exercise_id: it.exercises.id,
             name: it.exercises.name,
             muscle_group: it.exercises.muscle_group,
@@ -207,6 +223,20 @@ export default function CreateWorkoutScreen({ route, navigation }) {
             target_duration_minutes: it.target_duration_minutes,
             target_distance_km: it.target_distance_km,
             target_intensity: it.target_intensity,
+          }))
+        );
+        setWarmupSelected(
+          warmupItems.map((it) => ({
+            exercise_id: it.exercises.id,
+            name: it.exercises.name,
+            muscle_group: it.exercises.muscle_group,
+            exercise_type: it.exercises.exercise_type,
+            target_sets: it.target_sets ?? 1,
+            target_reps: it.target_reps ?? 10,
+            combo_group: null,
+            target_duration_minutes: it.target_duration_minutes,
+            target_distance_km: null,
+            target_intensity: null,
           }))
         );
       }
@@ -385,6 +415,114 @@ export default function CreateWorkoutScreen({ route, navigation }) {
     return partner?.name || null;
   };
 
+  // ─── Funções auxiliares de aquecimento ───────────────────────────────────────
+
+  const isWarmupSelected = (id) => warmupSelected.some((e) => e.exercise_id === id);
+
+  const toggleWarmupExercise = (exercise) => {
+    setWarmupSelected((prev) => {
+      const exists = prev.find((e) => e.exercise_id === exercise.id);
+      if (exists) return prev.filter((e) => e.exercise_id !== exercise.id);
+      return [
+        ...prev,
+        {
+          exercise_id: exercise.id,
+          name: exercise.name,
+          muscle_group: exercise.muscle_group,
+          exercise_type: isForce(exercise) ? 'forca' : 'cardio',
+          target_sets: isForce(exercise) ? 1 : null,
+          target_reps: isForce(exercise) ? 10 : null,
+          target_duration_minutes: !isForce(exercise) ? 10 : null,
+          combo_group: null,
+        },
+      ];
+    });
+  };
+
+  const bumpWarmupSets = (exerciseId, delta) =>
+    setWarmupSelected((prev) =>
+      prev.map((e) =>
+        e.exercise_id === exerciseId ? { ...e, target_sets: Math.max(1, (e.target_sets || 1) + delta) } : e
+      )
+    );
+
+  const bumpWarmupReps = (exerciseId, delta) =>
+    setWarmupSelected((prev) =>
+      prev.map((e) =>
+        e.exercise_id === exerciseId ? { ...e, target_reps: Math.max(1, (e.target_reps || 1) + delta) } : e
+      )
+    );
+
+  const bumpWarmupDuration = (exerciseId, delta) =>
+    setWarmupSelected((prev) =>
+      prev.map((e) =>
+        e.exercise_id === exerciseId
+          ? { ...e, target_duration_minutes: Math.max(1, (e.target_duration_minutes || 1) + delta) }
+          : e
+      )
+    );
+
+  const handleAddWarmupExercise = async () => {
+    if (!warmupNewName.trim()) {
+      Alert.alert('Atenção', 'Digite o nome do exercício de aquecimento.');
+      return;
+    }
+    setWarmupAddingEx(true);
+    const { data, error } = await supabase
+      .from('exercises')
+      .insert({
+        name: warmupNewName.trim(),
+        muscle_group: warmupNewGroup.trim() || null,
+        exercise_type: warmupNewType,
+        video_id: warmupSelectedVideo?.id || null,
+        owner_id: session.user.id,
+      })
+      .select()
+      .single();
+    setWarmupAddingEx(false);
+    if (error) { Alert.alert('Erro', error.message); return; }
+    setExercises((prev) => [...prev, data]);
+    toggleWarmupExercise(data);
+    setWarmupNewName('');
+    setWarmupNewGroup('');
+    setWarmupNewType('forca');
+    setWarmupVideoSearch('');
+    setWarmupSelectedVideo(null);
+  };
+
+  const attachWarmupVideo = async (video) => {
+    const { error } = await supabase
+      .from('exercises')
+      .update({ video_id: video.id })
+      .eq('id', warmupAttachTarget.exerciseId);
+    if (error) { Alert.alert('Erro', error.message); return; }
+    setExercises((prev) =>
+      prev.map((e) => (e.id === warmupAttachTarget.exerciseId ? { ...e, video_id: video.id } : e))
+    );
+    setWarmupAttachTarget(null);
+    setWarmupAttachSearch('');
+  };
+
+  const warmupSearchLower    = warmupSearch.trim().toLowerCase();
+  const filteredWarmupVideos = warmupVideoSearch.trim()
+    ? videos.filter((v) => v.name.toLowerCase().includes(warmupVideoSearch.trim().toLowerCase()))
+    : [];
+  const filteredWarmupAttachVideos = warmupAttachSearch.trim()
+    ? videos.filter((v) => v.name.toLowerCase().includes(warmupAttachSearch.trim().toLowerCase()))
+    : videos;
+
+  const warmupGrouped = exercises.reduce((acc, item) => {
+    if (warmupSearchLower && !(item.name || '').toLowerCase().includes(warmupSearchLower) &&
+        !(item.muscle_group || '').toLowerCase().includes(warmupSearchLower)) return acc;
+    const g = item.muscle_group || 'Outros';
+    if (!acc[g]) acc[g] = [];
+    acc[g].push(item);
+    return acc;
+  }, {});
+  const warmupGroupNames = Object.keys(warmupGrouped).sort((a, b) => a.localeCompare(b));
+
+  // ─────────────────────────────────────────────────────────────────────────────
+
   // ---------- Vídeo de demonstração ----------
   const attachVideoToSelected = async (video) => {
     const { error } = await supabase.from('exercises').update({ video_id: video.id }).eq('id', attachTarget.exerciseId);
@@ -464,10 +602,24 @@ export default function CreateWorkoutScreen({ route, navigation }) {
       workout = data;
     }
 
+    const warmupRows = warmupSelected.map((e, index) => ({
+      workout_id: workout.id,
+      exercise_id: e.exercise_id,
+      order_index: -(warmupSelected.length - index), // índices negativos = ficam antes
+      is_warmup: true,
+      combo_group: null,
+      target_sets: isForce(e) ? e.target_sets : null,
+      target_reps: isForce(e) ? e.target_reps : null,
+      target_duration_minutes: !isForce(e) ? e.target_duration_minutes : null,
+      target_distance_km: null,
+      target_intensity: null,
+    }));
+
     const rows = selected.map((e, index) => ({
       workout_id: workout.id,
       exercise_id: e.exercise_id,
       order_index: index,
+      is_warmup: false,
       combo_group: isForce(e) ? e.combo_group : null,
       target_sets: isForce(e) ? e.target_sets : null,
       target_reps: isForce(e) ? e.target_reps : null,
@@ -476,7 +628,7 @@ export default function CreateWorkoutScreen({ route, navigation }) {
       target_intensity: !isForce(e) ? e.target_intensity : null,
     }));
 
-    const { error: insertError } = await supabase.from('workout_exercises').insert(rows);
+    const { error: insertError } = await supabase.from('workout_exercises').insert([...warmupRows, ...rows]);
     setSaving(false);
 
     if (insertError) {
@@ -622,8 +774,217 @@ export default function CreateWorkoutScreen({ route, navigation }) {
           </View>
         )}
 
-        {/* PASSO 2: EXERCÍCIOS */}
+        {/* PASSO 2: AQUECIMENTO */}
         {step === 1 && (
+          <View>
+            {/* Banner de info */}
+            <View style={styles.warmupBanner}>
+              <Feather name="activity" size={14} color={colors.amber} />
+              <Text style={styles.warmupBannerText}>
+                Selecione os exercícios de aquecimento. Eles aparecerão no topo do treino e o aluno precisará confirmá-los antes de iniciar.
+              </Text>
+            </View>
+
+            {/* Chips dos selecionados com vídeo */}
+            {warmupSelected.length > 0 && (
+              <View style={{ marginBottom: 16 }}>
+                <Text style={styles.sectionLabel}>Vídeos dos aquecimentos selecionados:</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {warmupSelected.map((ws) => {
+                    const hasVideo = !!getVideoId(ws.exercise_id);
+                    return (
+                      <TouchableOpacity
+                        key={ws.exercise_id}
+                        style={[styles.videoChip, { borderColor: colors.amberGlow }, hasVideo && { borderColor: colors.amber, backgroundColor: colors.amberGlow }]}
+                        onPress={() => setWarmupAttachTarget({ exerciseId: ws.exercise_id, name: ws.name })}
+                      >
+                        <Feather name={hasVideo ? 'film' : 'plus'} size={12} color={hasVideo ? colors.amber : colors.textDim} />
+                        <Text style={[styles.videoChipText, hasVideo && { color: colors.amber, fontWeight: '600' }]}> {ws.name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Busca */}
+            <View style={styles.searchBox}>
+              <Feather name="search" size={15} color={colors.textDim2} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Buscar exercício de aquecimento"
+                placeholderTextColor={colors.textDim2}
+                value={warmupSearch}
+                onChangeText={setWarmupSearch}
+              />
+            </View>
+
+            {/* Lista agrupada por músculo */}
+            {warmupGroupNames.map((groupName) => {
+              const gItems = warmupGrouped[groupName];
+              const groupColor = colorForGroup(groupName);
+              const selCount = gItems.filter((it) => isWarmupSelected(it.id)).length;
+              const isOpen = warmupOpenGroups[groupName] !== false;
+              return (
+                <View key={groupName}>
+                  <TouchableOpacity
+                    style={styles.groupHeader}
+                    onPress={() => setWarmupOpenGroups((p) => ({ ...p, [groupName]: !isOpen }))}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.groupDot, { backgroundColor: groupColor }]} />
+                    <Text style={styles.groupTitle}>{groupName}</Text>
+                    <View style={styles.groupCount}>
+                      <Text style={styles.groupCountText}>{selCount}/{gItems.length}</Text>
+                    </View>
+                    <Feather name={isOpen ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textDim2} />
+                  </TouchableOpacity>
+
+                  {isOpen && gItems.map((item) => {
+                    const wsel = warmupSelected.find((e) => e.exercise_id === item.id);
+                    return (
+                      <View
+                        key={item.id}
+                        style={[styles.exCard, wsel && { borderColor: 'rgba(255,182,72,0.4)', backgroundColor: colors.surface2 }]}
+                      >
+                        <TouchableOpacity style={styles.exRow} onPress={() => toggleWarmupExercise(item)} activeOpacity={0.8}>
+                          <View style={[styles.checkbox, wsel && { backgroundColor: colors.amber, borderColor: colors.amber }]}>
+                            {wsel && <Feather name="check" size={12} color="#04170F" />}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.exName}>{item.name}</Text>
+                            <Text style={styles.exGroup}>{groupName}</Text>
+                          </View>
+                        </TouchableOpacity>
+
+                        {wsel && (
+                          <View style={styles.exDetail}>
+                            {isForce(item) ? (
+                              <>
+                                <Stepper
+                                  value={wsel.target_sets}
+                                  onDecrease={() => bumpWarmupSets(item.id, -1)}
+                                  onIncrease={() => bumpWarmupSets(item.id, 1)}
+                                />
+                                <Text style={styles.x}>×</Text>
+                                <Stepper
+                                  value={wsel.target_reps}
+                                  onDecrease={() => bumpWarmupReps(item.id, -1)}
+                                  onIncrease={() => bumpWarmupReps(item.id, 1)}
+                                />
+                              </>
+                            ) : (
+                              <Stepper
+                                value={wsel.target_duration_minutes}
+                                suffix="min"
+                                tint
+                                onDecrease={() => bumpWarmupDuration(item.id, -1)}
+                                onIncrease={() => bumpWarmupDuration(item.id, 1)}
+                              />
+                            )}
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            })}
+
+            {/* Criar exercício de aquecimento novo */}
+            <View style={[styles.customBox, { borderColor: colors.amberGlow }]}>
+              <Text style={styles.sectionLabel}>Não achou? Crie um exercício de aquecimento:</Text>
+
+              <View style={{ flexDirection: 'row', marginBottom: 10 }}>
+                <TouchableOpacity
+                  style={[styles.fcBtn, warmupNewType === 'forca' && styles.fcBtnActive, { marginRight: 8 }]}
+                  onPress={() => setWarmupNewType('forca')}
+                >
+                  <Text style={[styles.fcBtnText, warmupNewType === 'forca' && styles.fcBtnTextActive]}>⚡ Força</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.fcBtn, warmupNewType === 'cardio' && { backgroundColor: colors.amberGlow, borderColor: colors.amber }]}
+                  onPress={() => setWarmupNewType('cardio')}
+                >
+                  <Text style={[styles.fcBtnText, warmupNewType === 'cardio' && { color: colors.amber }]}>🔥 Cardio/Leve</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ flexDirection: 'row' }}>
+                <TextInput
+                  style={[styles.smallFlexInput, { marginRight: 8 }]}
+                  placeholder="Nome do exercício"
+                  placeholderTextColor={colors.textDim2}
+                  value={warmupNewName}
+                  onChangeText={setWarmupNewName}
+                />
+                {warmupNewType === 'forca' && (
+                  <TextInput
+                    style={styles.smallFlexInput}
+                    placeholder="Grupo (opcional)"
+                    placeholderTextColor={colors.textDim2}
+                    value={warmupNewGroup}
+                    onChangeText={setWarmupNewGroup}
+                  />
+                )}
+              </View>
+
+              <Text style={[styles.sectionLabel, { marginTop: 12 }]}>Vídeo de demonstração (opcional):</Text>
+              {warmupSelectedVideo ? (
+                <View style={styles.videoSelectedRow}>
+                  <Feather name="film" size={13} color={colors.amber} />
+                  <Text style={[styles.videoSelectedText, { color: colors.amber }]}> {warmupSelectedVideo.name}</Text>
+                  <TouchableOpacity onPress={() => setWarmupSelectedVideo(null)}>
+                    <Text style={styles.videoRemove}>trocar</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Buscar vídeo já enviado, pelo nome"
+                    placeholderTextColor={colors.textDim2}
+                    value={warmupVideoSearch}
+                    onChangeText={setWarmupVideoSearch}
+                  />
+                  {filteredWarmupVideos.length > 0 && (
+                    <View style={styles.videoResultsBox}>
+                      {filteredWarmupVideos.map((v) => (
+                        <TouchableOpacity
+                          key={v.id}
+                          style={styles.videoResultRow}
+                          onPress={() => { setWarmupSelectedVideo(v); setWarmupVideoSearch(''); }}
+                        >
+                          <Feather name="film" size={13} color={colors.amber} />
+                          <Text style={styles.videoResultText}> {v.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                  <TouchableOpacity onPress={() => navigation.navigate('UploadVideo', { exerciseName: warmupNewName.trim() || undefined })}>
+                    <Text style={[styles.uploadLink, { color: colors.amber }]}>+ Enviar vídeo novo</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              <TouchableOpacity
+                style={[styles.addButton, { marginTop: 12, backgroundColor: colors.amber }]}
+                onPress={handleAddWarmupExercise}
+                disabled={warmupAddingEx}
+              >
+                <Text style={styles.addButtonText}>{warmupAddingEx ? '...' : 'Adicionar ao aquecimento'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.nextBtn} onPress={() => setStep(2)} activeOpacity={0.85}>
+              <Text style={styles.nextBtnText}>Ir para exercícios</Text>
+              <Feather name="chevron-right" size={16} color="#04170F" />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* PASSO 3: EXERCÍCIOS */}
+        {step === 2 && (
           <View>
             {selected.length > 0 && (
               <View style={{ marginBottom: 16 }}>
@@ -830,15 +1191,15 @@ export default function CreateWorkoutScreen({ route, navigation }) {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={styles.nextBtn} onPress={() => setStep(2)} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.nextBtn} onPress={() => setStep(3)} activeOpacity={0.85}>
               <Text style={styles.nextBtnText}>Ir para aeróbico</Text>
               <Feather name="chevron-right" size={16} color="#04170F" />
             </TouchableOpacity>
           </View>
         )}
 
-        {/* PASSO 3: AERÓBICO */}
-        {step === 2 && (
+        {/* PASSO 4: AERÓBICO */}
+        {step === 3 && (
           <View>
             <Text style={styles.fieldLabel}>
               Selecione os exercícios aeróbicos <Text style={styles.hint}>opcional</Text>
@@ -916,15 +1277,15 @@ export default function CreateWorkoutScreen({ route, navigation }) {
               );
             })}
 
-            <TouchableOpacity style={styles.nextBtn} onPress={() => setStep(3)} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.nextBtn} onPress={() => setStep(4)} activeOpacity={0.85}>
               <Text style={styles.nextBtnText}>Ir para revisão</Text>
               <Feather name="chevron-right" size={16} color="#04170F" />
             </TouchableOpacity>
           </View>
         )}
 
-        {/* PASSO 4: REVISÃO */}
-        {step === 3 && (
+        {/* PASSO 5: REVISÃO */}
+        {step === 4 && (
           <View style={styles.summaryCard}>
             <Text style={styles.summaryTitle}>{name || 'Treino sem nome'}</Text>
             {subtitleParts.length > 0 && <Text style={styles.summarySub}>{subtitleParts.join(' · ')}</Text>}
@@ -959,7 +1320,7 @@ export default function CreateWorkoutScreen({ route, navigation }) {
               </View>
             )}
 
-            {totalCount === 0 ? (
+            {totalCount === 0 && warmupSelected.length === 0 ? (
               <View style={styles.emptyState}>
                 <Feather name="inbox" size={30} color={colors.textDim2} />
                 <Text style={styles.emptyStateText}>
@@ -968,6 +1329,26 @@ export default function CreateWorkoutScreen({ route, navigation }) {
               </View>
             ) : (
               <View style={{ gap: 8 }}>
+                {warmupSelected.length > 0 && (
+                  <View style={styles.reviewWarmupSection}>
+                    <View style={styles.reviewWarmupHeader}>
+                      <Feather name="activity" size={12} color={colors.amber} />
+                      <Text style={styles.reviewWarmupLabel}>AQUECIMENTO ({warmupSelected.length})</Text>
+                    </View>
+                    {warmupSelected.map((e, idx) => (
+                      <View key={e.exercise_id} style={[styles.reviewItem, { borderLeftColor: colors.amber }]}>
+                        <Text style={styles.reviewN}>{String(idx + 1).padStart(2, '0')}</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.reviewName}>{e.name}</Text>
+                          <Text style={styles.reviewGroup}>{e.muscle_group || 'Aquecimento'}</Text>
+                        </View>
+                        <Text style={[styles.reviewStat, { backgroundColor: colors.amberGlow, color: colors.amber }]}>
+                          {isForce(e) ? `${e.target_sets}×${e.target_reps}` : `${e.target_duration_minutes} min`}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
                 {selected.map((e, idx) => {
                   const color = isForce(e) ? colorForGroup(e.muscle_group) : CARDIO_COLOR;
                   return (
@@ -1063,6 +1444,47 @@ export default function CreateWorkoutScreen({ route, navigation }) {
         </View>
       </Modal>
 
+      {/* Modal: anexar vídeo ao exercício de aquecimento */}
+      <Modal visible={!!warmupAttachTarget} transparent animationType="slide" onRequestClose={() => setWarmupAttachTarget(null)}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Vídeo para "{warmupAttachTarget?.name}"</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Buscar vídeo pelo nome"
+              placeholderTextColor={colors.textDim2}
+              value={warmupAttachSearch}
+              onChangeText={setWarmupAttachSearch}
+              autoFocus
+            />
+            <FlatList
+              style={{ maxHeight: 260 }}
+              data={filteredWarmupAttachVideos}
+              keyExtractor={(v) => v.id}
+              ListEmptyComponent={<Text style={styles.modalEmpty}>Nenhum vídeo encontrado.</Text>}
+              renderItem={({ item }) => (
+                <TouchableOpacity style={styles.modalVideoRow} onPress={() => attachWarmupVideo(item)}>
+                  <Feather name="film" size={14} color={colors.amber} />
+                  <Text style={styles.modalVideoText}> {item.name}</Text>
+                </TouchableOpacity>
+              )}
+            />
+            <TouchableOpacity
+              onPress={() => {
+                const target = warmupAttachTarget;
+                setWarmupAttachTarget(null);
+                navigation.navigate('UploadVideo', { exerciseId: target?.exerciseId, exerciseName: target?.name });
+              }}
+            >
+              <Text style={[styles.uploadLink, { color: colors.amber }]}>+ Enviar vídeo novo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalClose} onPress={() => setWarmupAttachTarget(null)}>
+              <Text style={styles.modalCloseText}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* Modal: anexar vídeo */}
       <Modal visible={!!attachTarget} transparent animationType="slide" onRequestClose={() => setAttachTarget(null)}>
         <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -1111,10 +1533,10 @@ export default function CreateWorkoutScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, paddingTop: 54 },
+  container: { flex: 1, backgroundColor: colors.bg, paddingTop: screenPaddingTop },
 
   // Header
-  topbar: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, marginBottom: 4 },
+  topbar: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: s(18), marginBottom: vs(4) },
   backBtn: {
     width: 34,
     height: 34,
@@ -1125,8 +1547,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  eyebrow: { color: colors.textDim2, fontSize: 11, letterSpacing: 0.6, textTransform: 'uppercase' },
-  topTitle: { color: colors.text, fontSize: 19, fontWeight: '800', marginTop: 2 },
+  eyebrow: { color: colors.textDim2, fontSize: fs(9), letterSpacing: 0.6, textTransform: 'uppercase' },
+  topTitle: { color: colors.text, fontSize: fs(17), fontWeight: '800', marginTop: vs(2) },
   ringBadge: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -1134,17 +1556,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.accentGlow,
     borderRadius: radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: s(10),
+    paddingVertical: vs(6),
   },
-  ringBadgeNum: { color: colors.accent, fontWeight: '800', fontSize: 14 },
-  ringBadgeLabel: { color: colors.textDim2, fontSize: 10, marginLeft: 2 },
+  ringBadgeNum: { color: colors.accent, fontWeight: '800', fontSize: fs(12) },
+  ringBadgeLabel: { color: colors.textDim2, fontSize: fs(9), marginLeft: 2 },
 
   // Step tabs
   steps: {
     flexDirection: 'row',
     marginHorizontal: 18,
-    marginTop: 14,
+    marginTop: vs(14),
     backgroundColor: colors.surface,
     borderRadius: 14,
     padding: 4,
@@ -1157,7 +1579,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    paddingVertical: 9,
+    paddingVertical: vs(9),
     borderRadius: 11,
   },
   stepBtnActive: { backgroundColor: colors.accent },
@@ -1170,23 +1592,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   stepNumActive: { backgroundColor: '#08110A' },
-  stepNumText: { color: colors.textDim, fontSize: 8.5, fontWeight: '700' },
+  stepNumText: { color: colors.textDim, fontSize: fs(9), fontWeight: '700' },
   stepNumTextActive: { color: colors.accent },
-  stepBtnText: { color: colors.textDim2, fontSize: 11, fontWeight: '700' },
+  stepBtnText: { color: colors.textDim2, fontSize: fs(9), fontWeight: '700' },
   stepBtnTextActive: { color: '#08110A' },
 
   fieldLabel: {
-    fontSize: 11.5,
+    fontSize: fs(9.5),
     fontWeight: '700',
     color: colors.textDim,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginTop: 18,
-    marginBottom: 9,
+    marginTop: vs(18),
+    marginBottom: vs(9),
   },
-  hint: { fontWeight: '400', textTransform: 'none', color: colors.textDim2, fontSize: 11 },
-  sectionLabel: { color: colors.textDim, marginBottom: 8, fontSize: 13 },
-  emptyHint: { color: colors.textDim2, fontSize: 13, lineHeight: 19, marginTop: 4 },
+  hint: { fontWeight: '400', textTransform: 'none', color: colors.textDim2, fontSize: fs(9) },
+  sectionLabel: { color: colors.textDim, marginBottom: vs(8), fontSize: fs(11) },
+  emptyHint: { color: colors.textDim2, fontSize: fs(11), lineHeight: 19, marginTop: vs(4) },
 
   input: {
     backgroundColor: colors.surface,
@@ -1195,7 +1617,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.sm,
     padding: 14,
-    fontSize: 15,
+    fontSize: fs(13),
   },
 
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -1210,37 +1632,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dayPillActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  dayPillText: { color: colors.textDim, fontWeight: '700', fontSize: 12 },
+  dayPillText: { color: colors.textDim, fontWeight: '700', fontSize: fs(10) },
   dayPillTextActive: { color: '#08110A' },
 
   chip: {
-    paddingVertical: 9,
-    paddingHorizontal: 14,
+    paddingVertical: vs(9),
+    paddingHorizontal: s(14),
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
   chipActive: { backgroundColor: colors.accentGlow, borderColor: colors.accent },
-  chipText: { color: colors.textDim, fontSize: 12.5, fontWeight: '600' },
+  chipText: { color: colors.textDim, fontSize: fs(10.5), fontWeight: '600' },
   chipTextActive: { color: colors.accent },
 
   levelTrack: { flexDirection: 'row', gap: 8 },
 
   dateRow: { flexDirection: 'row', gap: 10 },
-  dateLabel: { color: colors.textDim2, fontSize: 10.5, marginBottom: 5 },
+  dateLabel: { color: colors.textDim2, fontSize: fs(9), marginBottom: vs(5) },
 
   nextBtn: {
-    marginTop: 24,
+    marginTop: vs(24),
     backgroundColor: colors.accent,
     borderRadius: radius.md,
-    paddingVertical: 15,
+    paddingVertical: vs(15),
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
-  nextBtnText: { color: '#04170F', fontWeight: '700', fontSize: 14.5 },
+  nextBtnText: { color: '#04170F', fontWeight: '700', fontSize: fs(12.5) },
 
   searchBox: {
     flexDirection: 'row',
@@ -1250,32 +1672,32 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 14,
+    paddingHorizontal: s(14),
+    paddingVertical: vs(12),
+    marginBottom: vs(14),
   },
-  searchInput: { flex: 1, color: colors.text, fontSize: 14 },
+  searchInput: { flex: 1, color: colors.text, fontSize: fs(12) },
 
   groupHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingVertical: 10,
+    paddingVertical: vs(10),
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    marginTop: 2,
+    marginTop: vs(2),
   },
   groupDot: { width: 9, height: 9, borderRadius: 5 },
-  groupTitle: { color: colors.text, fontSize: 14.5, fontWeight: '700', flex: 1, textTransform: 'capitalize' },
+  groupTitle: { color: colors.text, fontSize: fs(12.5), fontWeight: '700', flex: 1, textTransform: 'capitalize' },
   groupCount: {
     backgroundColor: colors.surface2,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: s(8),
+    paddingVertical: vs(2),
   },
-  groupCountText: { color: colors.textDim2, fontSize: 11, fontWeight: '600' },
+  groupCountText: { color: colors.textDim2, fontSize: fs(9), fontWeight: '600' },
 
   exCard: {
     backgroundColor: colors.surface,
@@ -1283,7 +1705,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     padding: 13,
-    marginTop: 8,
+    marginTop: vs(8),
   },
   exRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   checkbox: {
@@ -1296,19 +1718,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   checkboxChecked: { backgroundColor: colors.accent, borderColor: colors.accent },
-  exName: { color: colors.text, fontSize: 14.5, fontWeight: '600' },
-  exGroup: { color: colors.textDim2, fontSize: 11.5, marginTop: 1, textTransform: 'capitalize' },
+  exName: { color: colors.text, fontSize: fs(12.5), fontWeight: '600' },
+  exGroup: { color: colors.textDim2, fontSize: fs(9.5), marginTop: vs(1), textTransform: 'capitalize' },
   exDetail: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginTop: 12,
-    paddingTop: 12,
+    marginTop: vs(12),
+    paddingTop: vs(12),
     borderTopWidth: 1,
     borderTopColor: colors.border,
     borderStyle: 'dashed',
   },
-  x: { color: colors.textDim2, fontSize: 12 },
+  x: { color: colors.textDim2, fontSize: fs(10) },
 
   stepper: {
     flexDirection: 'row',
@@ -1318,21 +1740,21 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   stepperBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  stepperBtnText: { color: colors.accent, fontSize: 16, fontWeight: '700' },
-  stepperVal: { color: colors.text, fontWeight: '700', fontSize: 12.5, minWidth: 30, textAlign: 'center' },
+  stepperBtnText: { color: colors.accent, fontSize: fs(14), fontWeight: '700' },
+  stepperVal: { color: colors.text, fontWeight: '700', fontSize: fs(10.5), minWidth: 30, textAlign: 'center' },
 
   comboTag: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface3,
     borderRadius: 8,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
+    paddingHorizontal: s(9),
+    paddingVertical: vs(6),
     borderWidth: 1,
     borderColor: 'transparent',
   },
   comboTagOn: { backgroundColor: 'rgba(253,180,78,0.14)', borderColor: 'rgba(253,180,78,0.4)' },
-  comboTagText: { color: colors.textDim, fontSize: 10.5, fontWeight: '700' },
+  comboTagText: { color: colors.textDim, fontSize: fs(9), fontWeight: '700' },
   comboTagTextOn: { color: colors.amber },
 
   cardioIcon: {
@@ -1347,22 +1769,22 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface3,
     color: colors.text,
     borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    fontSize: 12.5,
+    paddingHorizontal: s(10),
+    paddingVertical: vs(7),
+    fontSize: fs(10.5),
     width: 64,
   },
-  intensityRow: { flexDirection: 'row', gap: 6, marginTop: 8, width: '100%' },
+  intensityRow: { flexDirection: 'row', gap: 6, marginTop: vs(8), width: '100%' },
   intensityChip: {
     backgroundColor: colors.surface3,
     borderRadius: 8,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
+    paddingHorizontal: s(9),
+    paddingVertical: vs(6),
     borderWidth: 1,
     borderColor: 'transparent',
   },
   intensityChipOn: { backgroundColor: 'rgba(255,90,122,0.14)', borderColor: 'rgba(255,90,122,0.4)' },
-  intensityChipText: { color: colors.textDim, fontSize: 10.5, fontWeight: '700' },
+  intensityChipText: { color: colors.textDim, fontSize: fs(9), fontWeight: '700' },
   intensityChipTextOn: { color: CARDIO_COLOR },
 
   customBox: {
@@ -1372,11 +1794,11 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     borderRadius: radius.md,
     padding: 14,
-    marginTop: 16,
+    marginTop: vs(16),
   },
   fcBtn: {
     flex: 1,
-    paddingVertical: 9,
+    paddingVertical: vs(9),
     borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1384,7 +1806,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   fcBtnActive: { backgroundColor: colors.accentGlow, borderColor: colors.accent },
-  fcBtnText: { color: colors.textDim, fontSize: 12.5, fontWeight: '600' },
+  fcBtnText: { color: colors.textDim, fontSize: fs(10.5), fontWeight: '600' },
   fcBtnTextActive: { color: colors.accent },
   smallFlexInput: {
     flex: 1,
@@ -1394,24 +1816,24 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.sm - 2,
     padding: 10,
-    fontSize: 14,
+    fontSize: fs(12),
   },
-  addButton: { backgroundColor: colors.accent, borderRadius: radius.sm - 2, paddingVertical: 10, alignItems: 'center' },
-  addButtonText: { color: '#04170F', fontWeight: '700', fontSize: 13 },
+  addButton: { backgroundColor: colors.accent, borderRadius: radius.sm - 2, paddingVertical: vs(10), alignItems: 'center' },
+  addButtonText: { color: '#04170F', fontWeight: '700', fontSize: fs(11) },
 
   videoChip: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
     borderRadius: radius.pill,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    paddingVertical: vs(8),
+    paddingHorizontal: s(14),
     marginRight: 8,
     borderWidth: 1,
     borderColor: colors.border,
   },
   videoChipDone: { borderColor: colors.accent, backgroundColor: colors.accentGlow },
-  videoChipText: { color: colors.textDim, fontSize: 13 },
+  videoChipText: { color: colors.textDim, fontSize: fs(11) },
   videoChipTextDone: { color: colors.accent, fontWeight: '600' },
   videoSelectedRow: {
     flexDirection: 'row',
@@ -1420,22 +1842,22 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm - 2,
     padding: 10,
   },
-  videoSelectedText: { color: colors.accent, fontSize: 13, fontWeight: '600', flex: 1 },
-  videoRemove: { color: colors.textDim, fontSize: 12, textDecorationLine: 'underline' },
-  videoResultsBox: { backgroundColor: colors.surface2, borderRadius: radius.sm - 2, marginTop: 8, marginBottom: 4 },
+  videoSelectedText: { color: colors.accent, fontSize: fs(11), fontWeight: '600', flex: 1 },
+  videoRemove: { color: colors.textDim, fontSize: fs(10), textDecorationLine: 'underline' },
+  videoResultsBox: { backgroundColor: colors.surface2, borderRadius: radius.sm - 2, marginTop: vs(8), marginBottom: vs(4) },
   videoResultRow: { flexDirection: 'row', alignItems: 'center', padding: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
-  videoResultText: { color: colors.text, fontSize: 13 },
-  uploadLink: { color: colors.accent, fontSize: 13, marginTop: 8, marginBottom: 4, fontWeight: '600' },
+  videoResultText: { color: colors.text, fontSize: fs(11) },
+  uploadLink: { color: colors.accent, fontSize: fs(11), marginTop: vs(8), marginBottom: vs(4), fontWeight: '600' },
 
   // Revisão
   summaryCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.xl, padding: 18 },
-  summaryTitle: { color: colors.text, fontSize: 19, fontWeight: '800' },
-  summarySub: { color: colors.textDim2, fontSize: 12.5, marginTop: 2, marginBottom: 16 },
-  metaGrid: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  summaryTitle: { color: colors.text, fontSize: fs(17), fontWeight: '800' },
+  summarySub: { color: colors.textDim2, fontSize: fs(10.5), marginTop: vs(2), marginBottom: vs(16) },
+  metaGrid: { flexDirection: 'row', gap: 10, marginBottom: vs(16) },
   metaBox: { flex: 1, backgroundColor: colors.surface2, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border },
-  metaK: { color: colors.textDim2, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '600' },
-  metaV: { color: colors.text, fontSize: 13.5, fontWeight: '700', marginTop: 3 },
-  legendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  metaK: { color: colors.textDim2, fontSize: fs(9), textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '600' },
+  metaV: { color: colors.text, fontSize: fs(11.5), fontWeight: '700', marginTop: vs(3) },
+  legendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: vs(16) },
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1444,12 +1866,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: s(10),
+    paddingVertical: vs(5),
   },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
-  legendText: { color: colors.textDim, fontSize: 11, fontWeight: '600', textTransform: 'capitalize' },
-  legendCount: { color: colors.text, fontSize: 11, fontWeight: '700' },
+  legendText: { color: colors.textDim, fontSize: fs(9), fontWeight: '600', textTransform: 'capitalize' },
+  legendCount: { color: colors.text, fontSize: fs(9), fontWeight: '700' },
   reviewItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1459,20 +1881,59 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderLeftWidth: 3,
   },
-  reviewN: { color: colors.textDim2, fontSize: 11, width: 16 },
-  reviewName: { color: colors.text, fontSize: 13.5, fontWeight: '600' },
-  reviewGroup: { color: colors.textDim2, fontSize: 10.5, marginTop: 1, textTransform: 'capitalize' },
+  reviewN: { color: colors.textDim2, fontSize: fs(9), width: 16 },
+  reviewName: { color: colors.text, fontSize: fs(11.5), fontWeight: '600' },
+  reviewGroup: { color: colors.textDim2, fontSize: fs(9), marginTop: vs(1), textTransform: 'capitalize' },
   reviewStat: {
     color: colors.accent,
-    fontSize: 12,
+    fontSize: fs(10),
     fontWeight: '700',
     backgroundColor: colors.accentGlow,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: s(8),
+    paddingVertical: vs(4),
     borderRadius: 8,
   },
-  emptyState: { alignItems: 'center', paddingVertical: 30, gap: 10 },
-  emptyStateText: { color: colors.textDim2, fontSize: 13, textAlign: 'center', lineHeight: 19 },
+  emptyState: { alignItems: 'center', paddingVertical: vs(30), gap: 10 },
+  emptyStateText: { color: colors.textDim2, fontSize: fs(11), textAlign: 'center', lineHeight: 19 },
+
+  // Aquecimento
+  warmupBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: colors.amberGlow,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,182,72,0.3)',
+    padding: 12,
+    marginBottom: vs(16),
+  },
+  warmupBannerText: {
+    color: colors.amber,
+    fontSize: fs(11),
+    lineHeight: 17,
+    flex: 1,
+  },
+  reviewWarmupSection: {
+    backgroundColor: colors.amberGlow,
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,182,72,0.3)',
+    marginBottom: 4,
+  },
+  reviewWarmupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  reviewWarmupLabel: {
+    color: colors.amber,
+    fontSize: fs(9),
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
 
   // Barra inferior
   bottomBar: {
@@ -1480,8 +1941,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 18,
-    paddingTop: 14,
+    paddingHorizontal: s(18),
+    paddingTop: vs(14),
     paddingBottom: Platform.OS === 'ios' ? 30 : 18,
     backgroundColor: colors.bg,
     borderTopWidth: 1,
@@ -1490,18 +1951,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  bottomBig: { color: colors.accent, fontWeight: '800', fontSize: 17 },
-  bottomLbl: { color: colors.textDim2, fontSize: 10.5, marginTop: 2 },
+  bottomBig: { color: colors.accent, fontWeight: '800', fontSize: fs(15) },
+  bottomLbl: { color: colors.textDim2, fontSize: fs(9), marginTop: vs(2) },
   saveBtn: {
     backgroundColor: colors.accent,
     borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 22,
+    paddingVertical: vs(14),
+    paddingHorizontal: s(22),
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  saveBtnText: { color: '#04170F', fontWeight: '700', fontSize: 14 },
+  saveBtnText: { color: '#04170F', fontWeight: '700', fontSize: fs(12) },
 
   accessoryBar: {
     backgroundColor: colors.surface,
@@ -1510,7 +1971,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  accessoryDone: { color: colors.accent, fontWeight: '700', fontSize: 15, paddingHorizontal: 12, paddingVertical: 4 },
+  accessoryDone: { color: colors.accent, fontWeight: '700', fontSize: fs(13), paddingHorizontal: s(12), paddingVertical: vs(4) },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalBox: {
@@ -1522,8 +1983,8 @@ const styles = StyleSheet.create({
     padding: 20,
     maxHeight: '78%',
   },
-  modalTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  modalSub: { color: colors.textDim2, fontSize: 12, marginTop: 4 },
+  modalTitle: { color: colors.text, fontSize: fs(14), fontWeight: '700' },
+  modalSub: { color: colors.textDim2, fontSize: fs(10), marginTop: vs(4) },
   modalInput: {
     backgroundColor: colors.surface,
     color: colors.text,
@@ -1531,11 +1992,11 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.sm,
     padding: 12,
-    marginTop: 12,
-    marginBottom: 12,
-    fontSize: 14,
+    marginTop: vs(12),
+    marginBottom: vs(12),
+    fontSize: fs(12),
   },
-  modalEmpty: { color: colors.textDim, fontSize: 13, paddingVertical: 12 },
+  modalEmpty: { color: colors.textDim, fontSize: fs(11), paddingVertical: vs(12) },
   modalOption: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1545,13 +2006,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 12,
     padding: 12,
-    marginBottom: 8,
+    marginBottom: vs(8),
   },
   modalOptionPicked: { borderColor: colors.accent, backgroundColor: colors.accentGlow },
-  modalOptionName: { color: colors.text, fontSize: 13.5, fontWeight: '600' },
-  modalOptionGroup: { color: colors.textDim2, fontSize: 10.5, marginTop: 1, textTransform: 'capitalize' },
-  modalVideoRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
-  modalVideoText: { color: colors.text, fontSize: 14 },
-  modalClose: { marginTop: 12, alignItems: 'center', paddingVertical: 10 },
-  modalCloseText: { color: colors.textDim, fontSize: 14 },
+  modalOptionName: { color: colors.text, fontSize: fs(11.5), fontWeight: '600' },
+  modalOptionGroup: { color: colors.textDim2, fontSize: fs(9), marginTop: vs(1), textTransform: 'capitalize' },
+  modalVideoRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: vs(12), borderBottomWidth: 1, borderBottomColor: colors.border },
+  modalVideoText: { color: colors.text, fontSize: fs(12) },
+  modalClose: { marginTop: vs(12), alignItems: 'center', paddingVertical: vs(10) },
+  modalCloseText: { color: colors.textDim, fontSize: fs(12) },
 });

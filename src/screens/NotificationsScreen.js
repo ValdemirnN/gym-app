@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -102,17 +103,17 @@ export default function NotificationsScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0D0D0D' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20, backgroundColor: '#1C1C1E' },
-  headerTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: 'bold' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: s(20), paddingTop: screenPaddingTop, paddingBottom: vs(20), backgroundColor: '#1C1C1E' },
+  headerTitle: { color: '#FFFFFF', fontSize: fs(18), fontWeight: 'bold' },
   listContainer: { padding: 20 },
-  notificationCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1C1C1E', padding: 16, borderRadius: 16, marginBottom: 12 },
+  notificationCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1C1C1E', padding: 16, borderRadius: 16, marginBottom: vs(12) },
   unreadCard: { borderLeftWidth: 4, borderLeftColor: '#22c440' },
   iconContainer: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
   textContainer: { flex: 1 },
-  title: { color: '#E5E5E5', fontSize: 16, fontWeight: '600', marginBottom: 4 },
+  title: { color: '#E5E5E5', fontSize: fs(14), fontWeight: '600', marginBottom: vs(4) },
   unreadText: { color: '#FFFFFF', fontWeight: 'bold' },
-  description: { color: '#A1A1AA', fontSize: 14, lineHeight: 20 },
-  time: { color: '#52525B', fontSize: 12, marginTop: 8 },
+  description: { color: '#A1A1AA', fontSize: fs(12), lineHeight: 20 },
+  time: { color: '#52525B', fontSize: fs(10), marginTop: vs(8) },
   unreadDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#22c440', marginLeft: 10 },
-  emptyText: { color: '#A1A1AA', textAlign: 'center', marginTop: 40, fontSize: 16 },
+  emptyText: { color: '#A1A1AA', textAlign: 'center', marginTop: vs(40), fontSize: fs(14) },
 });
