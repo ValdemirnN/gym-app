@@ -10,7 +10,7 @@
  *    Principal + Substituto, sem ambiguidade.
  */
 
-import React, { useCallback, useState, useRef } from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -411,6 +411,28 @@ export default function WorkoutDetailScreen({ route, navigation }) {
   const [showSkipModal, setShowSkipModal] = useState(false);
   const [skipping, setSkipping] = useState(false);
 
+  // ── Treino em andamento (cronômetro inline — sem navegar para outra tela) ──
+  const [workoutStarted, setWorkoutStarted] = useState(false);
+  const [activeLogId, setActiveLogId] = useState(null);
+  const [workoutStartedAt, setWorkoutStartedAt] = useState(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [finishing, setFinishing] = useState(false);
+
+  // Cronômetro: atualiza a cada segundo enquanto o treino estiver ativo
+  useEffect(() => {
+    if (!workoutStarted || !workoutStartedAt) return;
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - workoutStartedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [workoutStarted, workoutStartedAt]);
+
+  const formatElapsed = (totalSeconds) => {
+    const m = Math.floor(totalSeconds / 60);
+    const sec = totalSeconds % 60;
+    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  };
+
   // ── Carga de dados ─────────────────────────────────────────────────────────
   const loadItems = useCallback(async () => {
     const { data } = await supabase
@@ -461,8 +483,8 @@ export default function WorkoutDetailScreen({ route, navigation }) {
     });
   };
 
-  // ── Início do treino ───────────────────────────────────────────────────────
-  const createLogAndGo = async (extraFields = {}) => {
+  // ── Início do treino: cria o log e liga o cronômetro, SEM navegar ──────────
+  const startWorkoutInline = async (extraFields = {}) => {
     setStarting(true);
     const id = generateUUID();
     const { offline, error } = await insertRow('workout_logs', {
@@ -477,15 +499,16 @@ export default function WorkoutDetailScreen({ route, navigation }) {
       Alert.alert('Erro', error.message);
       return;
     }
-    navigation.navigate('ActiveWorkout', {
-      logId: id,
-      workoutLogId: id,
-      workoutId: primaryWorkoutId,
-      workoutIds,
-      workoutName,
-      exercises: items,
-      offline: !!offline,
-    });
+    setActiveLogId(id);
+    setWorkoutStartedAt(Date.now());
+    setElapsedSeconds(0);
+    setWorkoutStarted(true);
+    if (offline) {
+      Alert.alert(
+        'Sem internet',
+        'Guardado no aparelho — assim que voltar a internet, seu treino sobe automaticamente.'
+      );
+    }
   };
 
   const handleIniciar = () => {
@@ -500,7 +523,7 @@ export default function WorkoutDetailScreen({ route, navigation }) {
       setShowDayChangeModal(true);
       return;
     }
-    createLogAndGo({});
+    startWorkoutInline({});
   };
 
   const confirmDayChange = () => {
@@ -511,7 +534,54 @@ export default function WorkoutDetailScreen({ route, navigation }) {
     setShowDayChangeModal(false);
     const reason = dayChangeReason.trim();
     setDayChangeReason('');
-    createLogAndGo({ day_change_reason: reason });
+    startWorkoutInline({ day_change_reason: reason });
+  };
+
+  // ── Finalizar treino: salva as séries marcadas e vai para a tela de resumo ─
+  const handleFinalizarTreino = async () => {
+    setFinishing(true);
+
+    // Salva as séries marcadas como concluídas (visual → persistido no final)
+    const rows = [];
+    items.forEach((item) => {
+      const done = doneSets[item.id];
+      if (!done || done.size === 0) return;
+      const activePageIndex = activePageMap[item.id] || 0;
+      const pages = buildPages(item);
+      const page = pages[activePageIndex] || pages[0];
+      const effectiveExerciseId = page.exercise?.id || item.exercises.id;
+      Array.from(done).forEach((setIndex) => {
+        rows.push({
+          workout_log_id: activeLogId,
+          exercise_id: effectiveExerciseId,
+          set_number: setIndex + 1,
+          reps_done: parseInt(page.target_reps, 10) || 0,
+          weight_kg: 0,
+        });
+      });
+    });
+
+    let wentOffline = false;
+    if (rows.length > 0) {
+      const { offline, error } = await insertRow('workout_log_sets', rows);
+      if (error) {
+        setFinishing(false);
+        Alert.alert('Erro', error.message);
+        return;
+      }
+      wentOffline = wentOffline || offline;
+    }
+
+    setFinishing(false);
+    const finishedAtIso = new Date().toISOString();
+    navigation.navigate('WorkoutSummary', {
+      logId: activeLogId,
+      workoutName,
+      elapsedSeconds,
+      startedAt: workoutStartedAt,
+      finishedAt: finishedAtIso,
+      wentOffline,
+    });
   };
 
   const confirmSkip = async () => {
@@ -794,7 +864,12 @@ export default function WorkoutDetailScreen({ route, navigation }) {
             </Text>
           )}
         </View>
-        {/* Sem botão "Editar" — aluno não pode editar */}
+        {workoutStarted && (
+          <View style={styles.timerBadge}>
+            <Feather name="clock" size={s(13)} color={colors.accent} />
+            <Text style={styles.timerBadgeText}>{formatElapsed(elapsedSeconds)}</Text>
+          </View>
+        )}
       </View>
 
       {/* Lista de exercícios */}
@@ -829,7 +904,7 @@ export default function WorkoutDetailScreen({ route, navigation }) {
 
       {/* Bottombar */}
       <View style={styles.bottombar}>
-        {warmupItems.length > 0 && !warmupConfirmed && (
+        {!workoutStarted && warmupItems.length > 0 && !warmupConfirmed && (
           <View style={styles.warmupLockBanner}>
             <Feather name="lock" size={s(13)} color={colors.amber} />
             <Text style={styles.warmupLockText}>
@@ -838,37 +913,44 @@ export default function WorkoutDetailScreen({ route, navigation }) {
           </View>
         )}
 
-        <TouchableOpacity
-          style={[
-            styles.startButton,
-            warmupItems.length > 0 && !warmupConfirmed && styles.startButtonLocked,
-          ]}
-          onPress={handleIniciar}
-          disabled={starting}
-          activeOpacity={0.85}
-        >
-          <Feather
-            name={warmupItems.length > 0 && !warmupConfirmed ? 'lock' : 'play'}
-            size={s(16)}
-            color="#08110A"
-          />
-          <Text style={styles.startButtonText}>
-            {starting ? 'Abrindo...' : 'Iniciar Treino'}
-          </Text>
-        </TouchableOpacity>
+        {workoutStarted ? (
+          <TouchableOpacity
+            style={styles.finishButton}
+            onPress={handleFinalizarTreino}
+            disabled={finishing}
+            activeOpacity={0.85}
+          >
+            <Feather name="flag" size={s(16)} color="#04170F" />
+            <Text style={styles.startButtonText}>
+              {finishing ? 'Salvando...' : 'Finalizar Treino'}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[
+              styles.startButton,
+              warmupItems.length > 0 && !warmupConfirmed && styles.startButtonLocked,
+            ]}
+            onPress={handleIniciar}
+            disabled={starting}
+            activeOpacity={0.85}
+          >
+            <Feather
+              name={warmupItems.length > 0 && !warmupConfirmed ? 'lock' : 'play'}
+              size={s(16)}
+              color="#08110A"
+            />
+            <Text style={styles.startButtonText}>
+              {starting ? 'Abrindo...' : 'Iniciar Treino'}
+            </Text>
+          </TouchableOpacity>
+        )}
 
-        <View style={styles.bottomRowButtons}>
+        {!workoutStarted && (
           <TouchableOpacity style={styles.skipDayButton} onPress={() => setShowSkipModal(true)}>
             <Text style={styles.skipDayButtonText}>Não vou treinar hoje</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.feedbackHistoryBtn}
-            onPress={() => navigation.navigate('WorkoutFeedbackHistory')}
-          >
-            <Feather name="message-square" size={s(14)} color={colors.blue} />
-            <Text style={styles.feedbackHistoryBtnText}>Feedbacks</Text>
-          </TouchableOpacity>
-        </View>
+        )}
       </View>
 
       {/* Modal: treino em dia diferente */}
@@ -990,6 +1072,18 @@ const styles = StyleSheet.create({
   eyebrow: { color: colors.amber, fontSize: fs(10), fontWeight: '700', letterSpacing: 0.8 },
   title: { color: colors.text, fontSize: fs(15), fontWeight: '700' },
   metaLabel: { color: colors.textDim, fontSize: fs(10), marginTop: vs(1) },
+  timerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: s(5),
+    backgroundColor: colors.accentGlow,
+    borderWidth: 1,
+    borderColor: `${colors.accent}55`,
+    borderRadius: radius.pill,
+    paddingHorizontal: s(10),
+    paddingVertical: vs(6),
+  },
+  timerBadgeText: { color: colors.accent, fontSize: fs(12), fontWeight: '800', fontVariant: ['tabular-nums'] },
 
   // Card de exercício
   card: {
@@ -1192,31 +1286,28 @@ const styles = StyleSheet.create({
     borderColor: colors.amber,
     shadowOpacity: 0,
   },
-  startButtonText: { color: '#04170F', fontWeight: '700', fontSize: fs(14) },
-  bottomRowButtons: {
+  finishButton: {
     flexDirection: 'row',
+    gap: s(8),
+    backgroundColor: colors.accent,
+    borderRadius: radius.sm,
+    padding: s(16),
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: s(4),
+    justifyContent: 'center',
+    marginTop: vs(4),
+    shadowColor: colors.accentDark,
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
-  skipDayButton: { alignItems: 'center', paddingVertical: vs(14), flex: 1 },
+  startButtonText: { color: '#04170F', fontWeight: '700', fontSize: fs(14) },
+  skipDayButton: { alignItems: 'center', paddingVertical: vs(14) },
   skipDayButtonText: {
     color: colors.textDim,
     fontSize: fs(11),
     textDecorationLine: 'underline',
   },
-  feedbackHistoryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: s(5),
-    paddingVertical: vs(10),
-    paddingHorizontal: s(12),
-    backgroundColor: colors.blueGlow,
-    borderRadius: ms(10),
-    borderWidth: 1,
-    borderColor: `${colors.blue}44`,
-  },
-  feedbackHistoryBtnText: { color: colors.blue, fontSize: fs(10), fontWeight: '700' },
 
   // Modals
   modalOverlay: {

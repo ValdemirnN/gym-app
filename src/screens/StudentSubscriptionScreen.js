@@ -35,6 +35,11 @@ function buildMonthOptions() {
   return options;
 }
 
+// 'YYYY-MM-01' a partir de um objeto Date (dia sempre fixado em 01)
+function monthToValue(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
 export default function StudentSubscriptionScreen({ route, navigation }) {
   const { studentId, studentName } = route.params;
   const { session } = useAuth();
@@ -52,6 +57,10 @@ export default function StudentSubscriptionScreen({ route, navigation }) {
   // Seletor de mês para novo pagamento
   const monthOptions = buildMonthOptions();
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(0);
+  // Opção "outro mês" (qualquer mês passado ou futuro) — fica escondida atrás
+  // de um botão pra não poluir o seletor rápido de todo dia.
+  const [useCustomMonth, setUseCustomMonth] = useState(false);
+  const [customMonthDate, setCustomMonthDate] = useState(new Date());
 
   const load = useCallback(async () => {
     const { data: pays } = await supabase
@@ -109,7 +118,7 @@ export default function StudentSubscriptionScreen({ route, navigation }) {
 
   // ── Registrar pagamento ──────────────────────────────────
   const registrarPagamento = async () => {
-    const selectedMonth = monthOptions[selectedMonthIndex].value;
+    const selectedMonth = useCustomMonth ? monthToValue(customMonthDate) : monthOptions[selectedMonthIndex].value;
 
     // Impede duplicata: verifica se já existe pagamento confirmado nesse mês
     const already = payments.find(
@@ -141,6 +150,8 @@ export default function StudentSubscriptionScreen({ route, navigation }) {
     await recalcAccessAfterPayment();
     setAmount('');
     setSelectedMonthIndex(0);
+    setUseCustomMonth(false);
+    setCustomMonthDate(new Date());
     load();
     Alert.alert('Pronto', `Pagamento de ${monthLabel(selectedMonth)} registrado e acesso do aluno atualizado.`);
   };
@@ -323,14 +334,47 @@ export default function StudentSubscriptionScreen({ route, navigation }) {
           {monthOptions.map((opt, idx) => (
             <TouchableOpacity
               key={opt.value}
-              style={[styles.monthOption, selectedMonthIndex === idx && styles.monthOptionActive]}
-              onPress={() => setSelectedMonthIndex(idx)}
+              style={[styles.monthOption, !useCustomMonth && selectedMonthIndex === idx && styles.monthOptionActive]}
+              onPress={() => {
+                setUseCustomMonth(false);
+                setSelectedMonthIndex(idx);
+              }}
             >
-              <Text style={[styles.monthOptionText, selectedMonthIndex === idx && styles.monthOptionTextActive]}>
+              <Text style={[styles.monthOptionText, !useCustomMonth && selectedMonthIndex === idx && styles.monthOptionTextActive]}>
                 {opt.label}
               </Text>
             </TouchableOpacity>
           ))}
+
+          {/* Outro mês (qualquer mês passado ou futuro, pra guardar no histórico) */}
+          <TouchableOpacity
+            style={[styles.monthOption, useCustomMonth && styles.monthOptionActive]}
+            onPress={() => setUseCustomMonth(true)}
+          >
+            <Text style={[styles.monthOptionText, useCustomMonth && styles.monthOptionTextActive]}>
+              Outro mês (anterior ou futuro)
+            </Text>
+          </TouchableOpacity>
+
+          {useCustomMonth && (
+            <View style={styles.customMonthRow}>
+              <TouchableOpacity
+                style={styles.customMonthNavBtn}
+                onPress={() => setCustomMonthDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+              >
+                <Feather name="chevron-left" size={16} color={colors.textDim} />
+              </TouchableOpacity>
+              <Text style={styles.customMonthLabel}>
+                {customMonthDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+              </Text>
+              <TouchableOpacity
+                style={styles.customMonthNavBtn}
+                onPress={() => setCustomMonthDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+              >
+                <Feather name="chevron-right" size={16} color={colors.textDim} />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         <View style={{ flexDirection: 'row', marginTop: 10 }}>
@@ -499,6 +543,30 @@ const styles = StyleSheet.create({
   },
   monthOptionText: { color: colors.textDim, fontSize: fs(11) },
   monthOptionTextActive: { color: colors.accent, fontWeight: '600' },
+
+  customMonthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    paddingHorizontal: s(10),
+    paddingVertical: vs(6),
+    marginTop: vs(2),
+  },
+  customMonthNavBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customMonthLabel: { color: colors.text, fontSize: fs(12), fontWeight: '700', textTransform: 'capitalize' },
 
   amountInput: {
     flex: 1,

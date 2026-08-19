@@ -64,8 +64,8 @@ function formatDuration(seconds) {
 }
 
 // ── Item de feedback ──────────────────────────────────────────────────────────
-function FeedbackItem({ log }) {
-  const [expanded, setExpanded] = useState(false);
+function FeedbackItem({ log, startExpanded = false }) {
+  const [expanded, setExpanded] = useState(startExpanded);
   const moodMeta = getMoodMeta(log.feedback_mood);
   const hasPersonalReply = !!log.personal_reply;
 
@@ -204,25 +204,43 @@ export default function WorkoutFeedbackHistoryScreen({ route, navigation }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Quando vem do calendário de check-in (clique num dia específico)
+  const filterDate = route?.params?.filterDate || null;
+  // Quando o personal abre o histórico de um aluno específico (a partir da
+  // tela do aluno) — se não vier, usa o próprio usuário logado (fluxo do aluno).
+  const studentId = route?.params?.studentId || null;
+  const studentName = route?.params?.studentName || null;
+  const targetUserId = studentId || session.user.id;
+
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('workout_logs')
-      .select('id, started_at, finished_at, duration_seconds, feedback_mood, feedback_comment, personal_reply, skipped, skip_reason, workouts(name, day_of_week)')
-      .eq('user_id', session.user.id)
+      .select('id, started_at, finished_at, duration_seconds, feedback_mood, feedback_comment, personal_reply, skipped, skip_reason')
+      .eq('user_id', targetUserId)
       .not('finished_at', 'is', null)
       .order('started_at', { ascending: false })
       .limit(60);
 
+    if (error) {
+      console.warn('[WorkoutFeedbackHistoryScreen] erro ao carregar feedbacks:', error.message);
+    }
     setLogs(data || []);
     setLoading(false);
-  }, [session]);
+  }, [targetUserId]);
 
   useFocusEffect(
     useCallback(() => {
       load();
     }, [load])
   );
+
+  // Se veio de um dia específico do calendário, mostra só os treinos daquele dia
+  const displayLogs = filterDate
+    ? logs.filter(
+        (l) => new Date(l.started_at).toDateString() === new Date(filterDate).toDateString()
+      )
+    : logs;
 
   const completedLogs = logs.filter((l) => !l.skipped);
   const skippedLogs = logs.filter((l) => l.skipped);
@@ -235,8 +253,8 @@ export default function WorkoutFeedbackHistoryScreen({ route, navigation }) {
           <Feather name="chevron-left" size={s(20)} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.headerText}>
-          <Text style={styles.eyebrow}>HISTÓRICO</Text>
-          <Text style={styles.title}>Feedbacks</Text>
+          <Text style={styles.eyebrow}>{studentName ? studentName.toUpperCase() : 'HISTÓRICO'}</Text>
+          <Text style={styles.title}>{filterDate ? 'Feedback do dia' : 'Feedbacks'}</Text>
         </View>
       </View>
 
@@ -261,6 +279,20 @@ export default function WorkoutFeedbackHistoryScreen({ route, navigation }) {
         )}
       </View>
 
+      {/* Aviso de filtro por dia (veio do calendário) */}
+      {filterDate && (
+        <TouchableOpacity
+          style={styles.filterBanner}
+          onPress={() => navigation.setParams({ filterDate: null })}
+        >
+          <Feather name="calendar" size={s(12)} color={colors.accent} />
+          <Text style={styles.filterBannerText}>
+            Mostrando {formatDate(filterDate)}
+          </Text>
+          <Text style={styles.filterBannerClear}>Ver todos</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Lista */}
       <ScrollView
         contentContainerStyle={styles.list}
@@ -268,16 +300,22 @@ export default function WorkoutFeedbackHistoryScreen({ route, navigation }) {
       >
         {loading ? (
           <Text style={styles.emptyText}>Carregando...</Text>
-        ) : logs.length === 0 ? (
+        ) : displayLogs.length === 0 ? (
           <View style={styles.emptyBox}>
             <Feather name="inbox" size={s(36)} color={colors.textFaint} />
             <Text style={styles.emptyTitle}>Nenhum treino registrado</Text>
             <Text style={styles.emptySubtitle}>
-              Ao finalizar um treino, ele aparece aqui com o feedback do seu personal.
+              {filterDate
+                ? 'Não encontramos um treino concluído nesse dia.'
+                : studentId
+                ? 'Quando o aluno finalizar um treino, ele aparece aqui.'
+                : 'Ao finalizar um treino, ele aparece aqui com o feedback do seu personal.'}
             </Text>
           </View>
         ) : (
-          logs.map((log) => <FeedbackItem key={log.id} log={log} />)
+          displayLogs.map((log, idx) => (
+            <FeedbackItem key={log.id} log={log} startExpanded={!!filterDate && idx === 0} />
+          ))
         )}
       </ScrollView>
     </View>
@@ -330,6 +368,22 @@ const styles = StyleSheet.create({
   statChipLabel: { color: colors.textDim, fontSize: fs(9), fontWeight: '600', textAlign: 'center' },
 
   list: { paddingHorizontal: s(18), paddingBottom: vs(40) },
+
+  filterBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: s(7),
+    marginHorizontal: s(18),
+    marginBottom: vs(12),
+    backgroundColor: colors.accentGlow,
+    borderWidth: 1,
+    borderColor: `${colors.accent}44`,
+    borderRadius: ms(10),
+    paddingHorizontal: s(12),
+    paddingVertical: vs(9),
+  },
+  filterBannerText: { color: colors.text, fontSize: fs(11), fontWeight: '600', flex: 1 },
+  filterBannerClear: { color: colors.accent, fontSize: fs(10.5), fontWeight: '700', textDecorationLine: 'underline' },
 
   emptyBox: { alignItems: 'center', paddingTop: vs(60), gap: vs(12) },
   emptyTitle: { color: colors.text, fontSize: fs(14), fontWeight: '700' },

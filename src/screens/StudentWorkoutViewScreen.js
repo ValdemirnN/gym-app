@@ -3,9 +3,22 @@
  * Tela de visualização de treino na visão do ALUNO — somente leitura.
  * O aluno vê exercícios, substitutos e pode iniciar o treino.
  * Sem opções de Editar / Adicionar / Remover exercícios.
+ *
+ * ── Etapa 2 ──────────────────────────────────────────────────────────────────
+ * Ao clicar em "Iniciar Treino", o estado `isWorkoutActive` é definido como
+ * `true`. A tela exibe condicionalmente:
+ *   • Cronômetro no header
+ *   • Campos de Kg/Reps + checkboxes por série em cada card de exercício
+ *   • Botão "Finalizar Treino" (substitui o "Iniciar Treino")
+ *
+ * O botão "Finalizar Treino" abre o mesmo modal de finalização que já existe
+ * no ActiveWorkoutScreen (mood, comentário, salvar séries no Supabase).
+ * Toda a lógica de gravação permanece inalterada — foi copiada/adaptada do
+ * ActiveWorkoutScreen sem qualquer mudança nas chamadas ao banco.
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,11 +29,17 @@ import {
   UIManager,
   Platform,
   useWindowDimensions,
+  TextInput,
+  Alert,
+  Modal,
+  KeyboardAvoidingView,
+  AppState,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
-import { insertRow } from '../lib/dataClient';
+import { insertRow, updateRow } from '../lib/dataClient';
 import { generateUUID } from '../utils/uuid';
 import { useAuth } from '../context/AuthContext';
 import { colors, radius } from '../theme/theme';
@@ -34,6 +53,32 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 const WEEKDAY_KEYS = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
 const todayKey = () => WEEKDAY_KEYS[new Date().getDay()];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function formatElapsed(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60);
+  const sec = totalSeconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+// Chave de persistência do treino em andamento (sobrevive ao app ser fechado
+// pela barra de apps recentes — só é apagada quando o treino é finalizado).
+const ACTIVE_WORKOUT_KEY = 'active_workout_session';
+
+function buildInitialSets(exercises) {
+  const state = {};
+  (exercises || []).forEach((item) => {
+    if (item.exercises?.exercise_type === 'cardio') return;
+    state[item.exercises.id] = Array.from({ length: item.target_sets }, () => ({
+      reps: String(item.target_reps ?? ''),
+      weight: '',
+      done: false,
+    }));
+  });
+  return state;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function StudentWorkoutViewScreen({ route, navigation }) {
   const { workoutId, workoutIds: workoutIdsParam, workoutName, dayOfWeek } = route.params;
@@ -49,6 +94,103 @@ export default function StudentWorkoutViewScreen({ route, navigation }) {
   const [starting, setStarting] = useState(false);
   const { width: windowWidth } = useWindowDimensions();
 
+  // ── Estado do treino ativo ─────────────────────────────────────────────────
+  const [isWorkoutActive, setIsWorkoutActive] = useState(false);
+  const [activeLogId, setActiveLogId] = useState(null);
+  const [startedAt, setStartedAt] = useState(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Séries em andamento: { [exerciseId]: [{reps, weight, done}] }
+  const [sets, setSets] = useState({});
+
+  // Modal de finalização
+  const [showFinishModal, setShowFinishModal] = useState(false);
+  const [finishedAt, setFinishedAt] = useState(null);
+  const [moodChoice, setMoodChoice] = useState(null);
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [finishing, setFinishing] = useState(false);
+
+  // ── Cronômetro ─────────────────────────────────────────────────────────────
+  // O cronômetro é calculado a partir de `startedAt` (timestamp real), e não por
+  // incremento simples — por isso ele já "continua contando" sozinho quando o
+  // celular é bloqueado ou o app vai pra segundo plano: assim que o app volta
+  // ao primeiro plano, a diferença Date.now() - startedAt já reflete o tempo
+  // real decorrido, mesmo que o setInterval tenha ficado pausado no meio tempo.
+  useEffect(() => {
+    if (!isWorkoutActive || !startedAt) return;
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isWorkoutActive, startedAt]);
+
+  // Recalcula na hora quando o app volta a ficar ativo (evita mostrar o tempo
+  // "parado" por um instante antes do próximo tick do setInterval).
+  useEffect(() => {
+    if (!isWorkoutActive || !startedAt) return;
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+      }
+    });
+    return () => sub.remove();
+  }, [isWorkoutActive, startedAt]);
+
+  // ── Persistência do treino em andamento ─────────────────────────────────────
+  // Se o usuário fechar o app pela barra de apps recentes (matando o processo),
+  // o estado do React some. Para não perder o treino, salvamos tudo no
+  // AsyncStorage sempre que algo relevante muda, e restauramos ao reabrir.
+  const activeWorkoutStorageKey = React.useMemo(
+    () => (session?.user?.id ? `${ACTIVE_WORKOUT_KEY}:${session.user.id}` : null),
+    [session?.user?.id]
+  );
+
+  useEffect(() => {
+    if (!isWorkoutActive || !activeWorkoutStorageKey) return;
+    const payload = {
+      workoutIds,
+      primaryWorkoutId,
+      activeLogId,
+      startedAt,
+      sets,
+      moodChoice,
+      feedbackComment,
+    };
+    AsyncStorage.setItem(activeWorkoutStorageKey, JSON.stringify(payload)).catch(() => {});
+  }, [isWorkoutActive, activeWorkoutStorageKey, activeLogId, startedAt, sets, moodChoice, feedbackComment]);
+
+  // Restaura um treino em andamento (se houver) assim que a tela monta.
+  useEffect(() => {
+    if (!activeWorkoutStorageKey || isWorkoutActive) return;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(activeWorkoutStorageKey);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        if (!saved?.activeLogId || !saved?.startedAt) return;
+        // Só restaura se for o mesmo treino que está sendo aberto agora.
+        if (saved.primaryWorkoutId && saved.primaryWorkoutId !== primaryWorkoutId) return;
+
+        setActiveLogId(saved.activeLogId);
+        setStartedAt(saved.startedAt);
+        setElapsedSeconds(Math.floor((Date.now() - saved.startedAt) / 1000));
+        setSets(saved.sets || {});
+        setMoodChoice(saved.moodChoice || null);
+        setFeedbackComment(saved.feedbackComment || '');
+        setIsWorkoutActive(true);
+      } catch {
+        // ignora estado corrompido
+      }
+    })();
+  }, [activeWorkoutStorageKey, primaryWorkoutId]);
+
+  const clearPersistedWorkout = React.useCallback(() => {
+    if (activeWorkoutStorageKey) {
+      AsyncStorage.removeItem(activeWorkoutStorageKey).catch(() => {});
+    }
+  }, [activeWorkoutStorageKey]);
+
+  // ── Carregamento de exercícios ─────────────────────────────────────────────
   const load = useCallback(async () => {
     const { data } = await supabase
       .from('workout_exercises')
@@ -70,16 +212,9 @@ export default function StudentWorkoutViewScreen({ route, navigation }) {
     }, [load])
   );
 
-  const toggleExpand = (item) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpandedId((prev) => (prev === item.id ? null : item.id));
-  };
-
+  // ── Iniciar treino (inline — sem navegar) ───────────────────────────────────
   const startWorkout = async () => {
-    if (warmupItems.length > 0 && !warmupConfirmed) {
-      // avisa sobre aquecimento
-      return;
-    }
+    if (warmupItems.length > 0 && !warmupConfirmed) return;
 
     setStarting(true);
     const id = generateUUID();
@@ -92,23 +227,97 @@ export default function StudentWorkoutViewScreen({ route, navigation }) {
     setStarting(false);
 
     if (error) {
+      Alert.alert('Erro', error.message);
       return;
     }
 
-    navigation.navigate('ActiveWorkout', {
-      logId: id,
-      workoutId: primaryWorkoutId,
-      workoutIds,
-      workoutName,
-      exercises: items,
-      offline: !!offline,
+    setActiveLogId(id);
+    setStartedAt(Date.now());
+    setElapsedSeconds(0);
+    setSets(buildInitialSets(items));
+    setMoodChoice(null);
+    setFeedbackComment('');
+    setIsWorkoutActive(true);
+  };
+
+  // ── Helpers de séries ───────────────────────────────────────────────────────
+  const updateSet = (exerciseId, index, field, value) => {
+    setSets((prev) => {
+      const copy = { ...prev };
+      copy[exerciseId] = [...copy[exerciseId]];
+      copy[exerciseId][index] = { ...copy[exerciseId][index], [field]: value };
+      return copy;
     });
   };
 
-  // Monta as "páginas" de um exercício: principal + substitutos
-  const buildPages = (item) => {
-    const hasSubstitutes = (item.workout_exercise_substitutes || []).length > 0;
+  const toggleDone = (exerciseId, index) => {
+    updateSet(exerciseId, index, 'done', !sets[exerciseId]?.[index]?.done);
+  };
 
+  // ── Finalizar treino ────────────────────────────────────────────────────────
+  const finishWorkout = async () => {
+    setFinishing(true);
+
+    const rows = [];
+    Object.entries(sets || {}).forEach(([exerciseId, setList]) => {
+      (setList || []).forEach((s, index) => {
+        if (s.done) {
+          rows.push({
+            workout_log_id: activeLogId,
+            exercise_id: exerciseId,
+            set_number: index + 1,
+            reps_done: parseInt(s.reps) || 0,
+            weight_kg: parseFloat(s.weight) || 0,
+          });
+        }
+      });
+    });
+
+    let wentOffline = false;
+
+    if (rows.length > 0) {
+      const { offline, error } = await insertRow('workout_log_sets', rows);
+      if (error) {
+        setFinishing(false);
+        Alert.alert('Erro', error.message);
+        return;
+      }
+      wentOffline = wentOffline || offline;
+    }
+
+    const { offline: finishOffline } = await updateRow(
+      'workout_logs',
+      {
+        finished_at: new Date().toISOString(),
+        duration_seconds: elapsedSeconds,
+        feedback_mood: moodChoice,
+        feedback_comment: feedbackComment.trim() || null,
+      },
+      { id: activeLogId }
+    );
+    wentOffline = wentOffline || finishOffline;
+
+    setFinishing(false);
+    setShowFinishModal(false);
+    clearPersistedWorkout();
+
+    if (wentOffline) {
+      Alert.alert(
+        'Sem internet',
+        'Bom trabalho 💪 Você tava sem internet — assim que conectar, o treino sobe automaticamente pro seu personal.'
+      );
+    }
+
+    navigation.popToTop();
+  };
+
+  // ── Layout de exercícios ────────────────────────────────────────────────────
+  const toggleExpand = (item) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpandedId((prev) => (prev === item.id ? null : item.id));
+  };
+
+  const buildPages = (item) => {
     const mainPage = {
       key: 'main',
       isSubstitute: false,
@@ -170,43 +379,45 @@ export default function StudentWorkoutViewScreen({ route, navigation }) {
           </View>
         )}
 
-        {/* Séries */}
-        <View style={styles.setsBox}>
-          <View style={styles.setsHead}>
-            <Text style={styles.setsHeadLabel}>SÉRIES</Text>
-            <View style={styles.setsBadge}>
-              <Text style={styles.setsBadgeText}>{repsList.length} séries</Text>
+        {/* Séries (leitura) */}
+        {!isWorkoutActive && (
+          <View style={styles.setsBox}>
+            <View style={styles.setsHead}>
+              <Text style={styles.setsHeadLabel}>SÉRIES</Text>
+              <View style={styles.setsBadge}>
+                <Text style={styles.setsBadgeText}>{repsList.length} séries</Text>
+              </View>
             </View>
-          </View>
-          <View style={styles.setsRow}>
-            {repsList.map((reps, i) => {
-              const isLast = i === repsList.length - 1;
-              const isDrop = isLast && isDropSet;
-              return (
-                <View key={i} style={[styles.setPill, isDrop && styles.setPillDrop]}>
-                  <Text style={styles.setPillN}>{isDrop ? 'DROP' : `SÉRIE ${i + 1}`}</Text>
-                  {!isDrop ? (
-                    <>
-                      <Text style={styles.setPillReps}>{reps}</Text>
-                      <Text style={styles.setPillUnit}>reps</Text>
-                    </>
-                  ) : (
-                    <Feather name="zap" size={14} color={colors.amber} style={{ marginTop: 2 }} />
-                  )}
-                </View>
-              );
-            })}
-          </View>
+            <View style={styles.setsRow}>
+              {repsList.map((reps, i) => {
+                const isLast = i === repsList.length - 1;
+                const isDrop = isLast && isDropSet;
+                return (
+                  <View key={i} style={[styles.setPill, isDrop && styles.setPillDrop]}>
+                    <Text style={styles.setPillN}>{isDrop ? 'DROP' : `SÉRIE ${i + 1}`}</Text>
+                    {!isDrop ? (
+                      <>
+                        <Text style={styles.setPillReps}>{reps}</Text>
+                        <Text style={styles.setPillUnit}>reps</Text>
+                      </>
+                    ) : (
+                      <Feather name="zap" size={14} color={colors.amber} style={{ marginTop: 2 }} />
+                    )}
+                  </View>
+                );
+              })}
+            </View>
 
-          {isDropSet && (
-            <View style={styles.dropBox}>
-              <Feather name="zap" size={12} color={colors.amber} />
-              <Text style={styles.dropText}>
-                {page.drop_note || 'Drop set na última série — reduza a carga e continue sem parar.'}
-              </Text>
-            </View>
-          )}
-        </View>
+            {isDropSet && (
+              <View style={styles.dropBox}>
+                <Feather name="zap" size={12} color={colors.amber} />
+                <Text style={styles.dropText}>
+                  {page.drop_note || 'Drop set na última série — reduza a carga e continue sem parar.'}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Descanso */}
         {page.rest_seconds ? (
@@ -245,13 +456,62 @@ export default function StudentWorkoutViewScreen({ route, navigation }) {
     );
   };
 
+  // ── Componente: Tracker de séries em modo ativo ─────────────────────────────
+  const renderActiveSetTracker = (item) => {
+    const exerciseId = item.exercises?.id;
+    if (!exerciseId || !sets[exerciseId]) return null;
+    return (
+      <View style={styles.activeTrackerBox}>
+        <Text style={styles.activeTrackerTitle}>Registre suas séries</Text>
+        {sets[exerciseId].map((s, index) => (
+          <View key={index} style={styles.activeSetRow}>
+            <Text style={styles.activeSetLabel}>Série {index + 1}</Text>
+            <TextInput
+              style={styles.activeSetInput}
+              placeholder="Kg"
+              placeholderTextColor={colors.textDim}
+              keyboardType="numeric"
+              value={s.weight}
+              onChangeText={(v) => updateSet(exerciseId, index, 'weight', v)}
+            />
+            <TextInput
+              style={styles.activeSetInput}
+              placeholder="Reps"
+              placeholderTextColor={colors.textDim}
+              keyboardType="numeric"
+              value={s.reps}
+              onChangeText={(v) => updateSet(exerciseId, index, 'reps', v)}
+            />
+            <TouchableOpacity
+              style={[styles.activeSetDoneBtn, s.done && styles.activeSetDoneBtnActive]}
+              onPress={() => toggleDone(exerciseId, index)}
+            >
+              {s.done ? <Feather name="check" size={s(16)} color="#04170F" /> : null}
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
+    );
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
       {/* Header */}
-      <TouchableOpacity style={styles.backRow} onPress={() => navigation.goBack()}>
-        <Feather name="chevron-left" size={s(20)} color={colors.text} />
-        <Text style={styles.backText}>{workoutName}</Text>
-      </TouchableOpacity>
+      <View style={styles.headerRow}>
+        <TouchableOpacity style={styles.backRow} onPress={() => navigation.goBack()}>
+          <Feather name="chevron-left" size={s(20)} color={colors.text} />
+          <Text style={styles.backText} numberOfLines={1}>{workoutName}</Text>
+        </TouchableOpacity>
+
+        {/* Cronômetro — visível somente com treino ativo */}
+        {isWorkoutActive && (
+          <View style={styles.timerBadge}>
+            <Feather name="clock" size={s(12)} color={colors.accent} />
+            <Text style={styles.timerText}> {formatElapsed(elapsedSeconds)}</Text>
+          </View>
+        )}
+      </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: vs(120) }} showsVerticalScrollIndicator={false}>
         {/* Aquecimento */}
@@ -333,6 +593,20 @@ export default function StudentWorkoutViewScreen({ route, navigation }) {
                           <Text style={styles.tagVideoText}> Vídeo</Text>
                         </View>
                       )}
+                      {/* Indicador visual de progresso quando ativo */}
+                      {isWorkoutActive && sets[item.exercises?.id] && (() => {
+                        const done = sets[item.exercises.id].filter((s) => s.done).length;
+                        const total = sets[item.exercises.id].length;
+                        if (done === 0) return null;
+                        return (
+                          <View style={[styles.tagSub, done === total && styles.tagDone]}>
+                            <Feather name="check" size={s(9)} color={done === total ? '#04170F' : colors.accent} />
+                            <Text style={[styles.tagSubText, done === total && { color: '#04170F' }]}>
+                              {' '}{done}/{total} séries
+                            </Text>
+                          </View>
+                        );
+                      })()}
                     </View>
                   )}
                 </View>
@@ -380,7 +654,7 @@ export default function StudentWorkoutViewScreen({ route, navigation }) {
                     </View>
                   )}
 
-                  {/* Aviso de exercício SUBSTITUÍDO (quando o personal trocou o principal) */}
+                  {/* Aviso de exercício SUBSTITUÍDO */}
                   {activePage > 0 && (
                     <View style={styles.replacedBanner}>
                       <View style={styles.replacedMain}>
@@ -402,6 +676,9 @@ export default function StudentWorkoutViewScreen({ route, navigation }) {
 
                   {/* Conteúdo da página ativa */}
                   {renderPage(currentPage, item, pages)}
+
+                  {/* ── Tracker de séries (somente no modo ativo) ── */}
+                  {isWorkoutActive && renderActiveSetTracker(item)}
 
                   {/* Parceiro combinado */}
                   {item.combo_group && (() => {
@@ -472,24 +749,130 @@ export default function StudentWorkoutViewScreen({ route, navigation }) {
         })}
       </ScrollView>
 
-      {/* Botão fixo de iniciar */}
+      {/* ── Barra inferior — Iniciar ou Finalizar ── */}
       <View style={styles.startBar}>
-        <TouchableOpacity
-          style={[styles.startButton, starting && styles.startButtonDisabled]}
-          onPress={startWorkout}
-          disabled={starting}
-          activeOpacity={0.88}
-        >
-          <Feather name="play" size={s(16)} color="#04170F" />
-          <Text style={styles.startButtonText}>{starting ? 'Iniciando...' : 'Iniciar Treino'}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.skipButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.skipText}>Não vou treinar hoje</Text>
-        </TouchableOpacity>
+        {!isWorkoutActive ? (
+          <>
+            <TouchableOpacity
+              style={[styles.startButton, starting && styles.startButtonDisabled]}
+              onPress={startWorkout}
+              disabled={starting}
+              activeOpacity={0.88}
+            >
+              <Feather name="play" size={s(16)} color="#04170F" />
+              <Text style={styles.startButtonText}>{starting ? 'Iniciando...' : 'Iniciar Treino'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.skipButton}
+              onPress={() => navigation.goBack()}
+            >
+              <Text style={styles.skipText}>Não vou treinar hoje</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <TouchableOpacity
+            style={styles.finishButton}
+            onPress={() => {
+              setFinishedAt(Date.now());
+              setShowFinishModal(true);
+            }}
+            activeOpacity={0.88}
+          >
+            <Feather name="flag" size={s(16)} color="#04170F" />
+            <Text style={styles.finishButtonText}>Finalizar Treino</Text>
+          </TouchableOpacity>
+        )}
       </View>
+
+      {/* ── Modal de finalização ── */}
+      <Modal
+        visible={showFinishModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowFinishModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalBox}>
+            <View style={styles.finishIconCircle}>
+              <Feather name="award" size={26} color="#04170F" />
+            </View>
+            <Text style={styles.finishTitle}>Parabéns!</Text>
+            <Text style={styles.finishSubtitle}>Você concluiu seu treino!</Text>
+
+            <View style={styles.finishStatsBox}>
+              <View style={styles.finishStatsRow}>
+                <Text style={styles.finishStatsLabel}>Início</Text>
+                <Text style={styles.finishStatsValue}>
+                  {startedAt
+                    ? new Date(startedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                    : '-'}
+                </Text>
+              </View>
+              <View style={styles.finishStatsRow}>
+                <Text style={styles.finishStatsLabel}>Fim</Text>
+                <Text style={styles.finishStatsValue}>
+                  {finishedAt
+                    ? new Date(finishedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                    : '-'}
+                </Text>
+              </View>
+              <View style={styles.finishStatsRow}>
+                <Text style={styles.finishStatsLabel}>Tempo de treino</Text>
+                <Text style={styles.finishStatsValue}>{formatElapsed(elapsedSeconds)}</Text>
+              </View>
+            </View>
+
+            <Text style={styles.fieldLabel}>O que você achou dessa atividade?</Text>
+            <View style={styles.moodRow}>
+              {[
+                { key: 'muito_leve', label: '😴 Muito Leve' },
+                { key: 'leve', label: '🙂 Leve' },
+                { key: 'moderado', label: '💪 Moderado' },
+                { key: 'pesado', label: '🔥 Pesado' },
+                { key: 'exaustao', label: '🫠 Exaustão Máxima' },
+              ].map((m) => (
+                <TouchableOpacity
+                  key={m.key}
+                  style={[styles.moodChip, moodChoice === m.key && styles.moodChipActive]}
+                  onPress={() => setMoodChoice(m.key)}
+                >
+                  <Text style={[styles.moodChipText, moodChoice === m.key && styles.moodChipTextActive]}>
+                    {m.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.fieldLabel}>Deixe seu comentário aqui</Text>
+            <TextInput
+              style={styles.modalTextArea}
+              placeholder="Como foi o treino hoje?"
+              placeholderTextColor={colors.textDim}
+              value={feedbackComment}
+              onChangeText={setFeedbackComment}
+              multiline
+            />
+
+            <TouchableOpacity
+              style={styles.modalConfirm}
+              onPress={finishWorkout}
+              disabled={finishing}
+            >
+              <Text style={styles.modalConfirmText}>{finishing ? 'Salvando...' : 'Concluir'}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalClose}
+              onPress={() => setShowFinishModal(false)}
+            >
+              <Text style={styles.modalCloseText}>Continuar treinando</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -497,19 +880,37 @@ export default function StudentWorkoutViewScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
 
-  backRow: {
+  // ── Header ───────────────────────────────────────────────────────────────────
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: s(18),
     paddingTop: screenPaddingTop,
     paddingBottom: vs(14),
+  },
+  backRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: s(6),
+    flex: 1,
   },
   backText: { color: colors.text, fontSize: fs(14), fontWeight: '700', flex: 1 },
 
+  timerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.accentGlow,
+    paddingHorizontal: s(10),
+    paddingVertical: vs(6),
+    borderRadius: radius.pill,
+    marginLeft: s(8),
+  },
+  timerText: { color: colors.accent, fontSize: fs(11), fontWeight: '700' },
+
   empty: { color: colors.textDim, textAlign: 'center', marginTop: vs(40), fontSize: fs(12) },
 
-  // ── Card ────────────────────────────────────────────────────────
+  // ── Card ─────────────────────────────────────────────────────────────────────
   card: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -559,6 +960,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentGlow, borderRadius: ms(6),
     paddingHorizontal: s(7), paddingVertical: vs(3),
   },
+  tagDone: { backgroundColor: colors.accent },
   tagSubText: { color: colors.accent, fontSize: fs(9), fontWeight: '700' },
   tagVideo: {
     flexDirection: 'row', alignItems: 'center',
@@ -567,10 +969,9 @@ const styles = StyleSheet.create({
   },
   tagVideoText: { color: colors.blue, fontSize: fs(9), fontWeight: '700' },
 
-  // ── Área expandida ──────────────────────────────────────────────
+  // ── Área expandida ────────────────────────────────────────────────────────────
   expandedArea: { paddingBottom: vs(14) },
 
-  // Nav entre principal e substitutos
   pageNavRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -606,7 +1007,6 @@ const styles = StyleSheet.create({
   pagePillSubLabel: { color: colors.amber, fontSize: fs(9), fontWeight: '700', flexShrink: 0 },
   pagePillSubName: { color: colors.text, fontSize: fs(11), fontWeight: '800', flexShrink: 1 },
 
-  // Banner de substituição (principal riscado → substituto)
   replacedBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -649,7 +1049,7 @@ const styles = StyleSheet.create({
   },
   noVideoText: { color: colors.textFaint, fontSize: fs(10.5) },
 
-  // Séries
+  // Séries (leitura)
   setsBox: {
     marginHorizontal: s(14), marginTop: vs(14), marginBottom: vs(10),
     backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
@@ -751,7 +1151,62 @@ const styles = StyleSheet.create({
   },
   navMainText: { color: '#04170F', fontWeight: '700', fontSize: fs(11) },
 
-  // Botão iniciar (fixo)
+  // ── Tracker de séries ativo ───────────────────────────────────────────────────
+  activeTrackerBox: {
+    marginHorizontal: s(14),
+    marginTop: vs(14),
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.accent + '66',
+    borderRadius: radius.lg,
+    padding: s(14),
+  },
+  activeTrackerTitle: {
+    color: colors.accent,
+    fontSize: fs(10),
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: vs(10),
+  },
+  activeSetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: s(8),
+    marginBottom: vs(8),
+  },
+  activeSetLabel: {
+    color: colors.textDim,
+    fontSize: fs(10.5),
+    width: s(52),
+  },
+  activeSetInput: {
+    backgroundColor: colors.surface2,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm - 4,
+    width: s(60),
+    textAlign: 'center',
+    paddingVertical: vs(8),
+    fontSize: fs(12),
+  },
+  activeSetDoneBtn: {
+    width: s(32),
+    height: s(32),
+    borderRadius: s(16),
+    borderWidth: 2,
+    borderColor: colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 'auto',
+  },
+  activeSetDoneBtnActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+
+  // ── Barra inferior ────────────────────────────────────────────────────────────
   startBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: colors.bg,
@@ -768,4 +1223,95 @@ const styles = StyleSheet.create({
   startButtonText: { color: '#04170F', fontWeight: '800', fontSize: fs(14) },
   skipButton: { alignItems: 'center', paddingVertical: vs(4) },
   skipText: { color: colors.textDim, fontSize: fs(11) },
+
+  finishButton: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: s(10), backgroundColor: colors.accent,
+    borderRadius: ms(14), paddingVertical: vs(15),
+  },
+  finishButtonText: { color: '#04170F', fontWeight: '800', fontSize: fs(14) },
+
+  // ── Modal de finalização ──────────────────────────────────────────────────────
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalBox: {
+    backgroundColor: colors.surface2,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: s(20),
+    maxHeight: '90%',
+  },
+  finishIconCircle: {
+    width: s(56),
+    height: s(56),
+    borderRadius: s(28),
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: vs(12),
+  },
+  finishTitle: { color: colors.text, fontSize: fs(18), fontWeight: '800', textAlign: 'center' },
+  finishSubtitle: { color: colors.textDim, fontSize: fs(11), textAlign: 'center', marginBottom: vs(16) },
+  finishStatsBox: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: s(14),
+    marginBottom: vs(16),
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  finishStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: vs(4),
+  },
+  finishStatsLabel: { color: colors.textDim, fontSize: fs(10.5), fontWeight: '600' },
+  finishStatsValue: { color: colors.text, fontSize: fs(10.5), fontWeight: '700' },
+
+  fieldLabel: {
+    color: colors.textDim,
+    fontSize: fs(10.5),
+    fontWeight: '600',
+    marginBottom: vs(8),
+    marginTop: vs(4),
+  },
+  moodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: s(8), marginBottom: vs(16) },
+  moodChip: {
+    paddingHorizontal: s(12),
+    paddingVertical: vs(8),
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  moodChipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  moodChipText: { color: colors.textDim, fontSize: fs(10) },
+  moodChipTextActive: { color: '#04170F', fontWeight: '700' },
+
+  modalTextArea: {
+    backgroundColor: colors.surface,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: s(12),
+    fontSize: fs(12),
+    minHeight: vs(70),
+    textAlignVertical: 'top',
+  },
+  modalConfirm: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.sm,
+    padding: s(14),
+    alignItems: 'center',
+    marginTop: vs(14),
+  },
+  modalConfirmText: { color: '#04170F', fontWeight: '700', fontSize: fs(13) },
+  modalClose: { marginTop: vs(10), alignItems: 'center', paddingVertical: vs(8) },
+  modalCloseText: { color: colors.textDim, fontSize: fs(12) },
 });

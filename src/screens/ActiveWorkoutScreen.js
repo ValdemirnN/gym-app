@@ -13,7 +13,7 @@ import {
   Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { insertRow, updateRow } from '../lib/dataClient';
+import { insertRow } from '../lib/dataClient';
 import { colors, radius } from '../theme/theme';
 import { s, vs, ms, fs, isSmallDevice, screenPaddingH, screenPaddingTop } from '../utils/responsive';
 
@@ -212,18 +212,14 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
     navigation.navigate('VideoPlayer', { videoId, title: item.exercises.name });
   };
 
-  const [showFinishModal, setShowFinishModal] = useState(false);
-  const [finishedAt, setFinishedAt] = useState(null);
-  const [moodChoice, setMoodChoice] = useState(null);
-  const [feedbackComment, setFeedbackComment] = useState('');
-
-  const finishWorkout = async () => {
+  // ── Navegar para a tela de resumo/feedback ────────────────────────────────
+  const handleFinalizarTreino = async () => {
     setFinishing(true);
 
     const rows = [];
     Object.entries(sets || {}).forEach(([exerciseId, setList]) => {
       const status = exerciseStatus[exerciseId];
-      if (status?.status === 'pulado') return; // exercício pulado não gera séries
+      if (status?.status === 'pulado') return;
 
       const effectiveExerciseId = status?.status === 'substituido' ? status.substituteId : exerciseId;
 
@@ -277,7 +273,7 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
       wentOffline = wentOffline || offline;
     }
 
-    // Registra os exercícios pulados/substituídos (só os que tiveram alteração)
+    // Registra os exercícios pulados/substituídos
     const statusRows = Object.entries(exerciseStatus).map(([exerciseId, s]) => ({
       workout_log_id: resolvedLogId,
       exercise_id: exerciseId,
@@ -296,27 +292,18 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
       wentOffline = wentOffline || offline;
     }
 
-    const { offline: finishOffline } = await updateRow(
-      'workout_logs',
-      {
-        finished_at: new Date().toISOString(),
-        duration_seconds: elapsedSeconds,
-        feedback_mood: moodChoice,
-        feedback_comment: feedbackComment.trim() || null,
-      },
-      { id: resolvedLogId }
-    );
-    wentOffline = wentOffline || finishOffline;
-
     setFinishing(false);
-    setShowFinishModal(false);
-    if (wentOffline) {
-      Alert.alert(
-        'Sem internet',
-        'Bom trabalho 💪 Você tava sem internet — assim que conectar, o treino sobe automaticamente pro seu personal.'
-      );
-    }
-    navigation.popToTop();
+
+    // Navega para a tela de resumo — o feedback e o updateRow final ficam lá
+    const finishedAtIso = new Date().toISOString();
+    navigation.replace('WorkoutSummary', {
+      logId: resolvedLogId,
+      workoutName,
+      elapsedSeconds,
+      startedAt,
+      finishedAt: finishedAtIso,
+      wentOffline,
+    });
   };
 
   return (
@@ -483,14 +470,12 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
 
       <TouchableOpacity
         style={styles.finishButton}
-        onPress={() => {
-          setFinishedAt(Date.now());
-          setShowFinishModal(true);
-        }}
+        onPress={handleFinalizarTreino}
         disabled={finishing}
         activeOpacity={0.85}
       >
-        <Text style={styles.finishButtonText}>Finalizar Treino</Text>
+        <Feather name={finishing ? 'loader' : 'flag'} size={s(16)} color="#04170F" style={{ marginRight: s(6) }} />
+        <Text style={styles.finishButtonText}>{finishing ? 'Salvando...' : 'Finalizar Treino'}</Text>
       </TouchableOpacity>
 
       {/* Modal: motivo de pular o exercício */}
@@ -653,71 +638,6 @@ export default function ActiveWorkoutScreen({ route, navigation }) {
         </KeyboardAvoidingView>
       </Modal>
 
-      <Modal visible={showFinishModal} transparent animationType="slide" onRequestClose={() => setShowFinishModal(false)}>
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={styles.modalBox}>
-            <View style={styles.finishIconCircle}>
-              <Feather name="award" size={26} color="#04170F" />
-            </View>
-            <Text style={styles.finishTitle}>Parabéns!</Text>
-            <Text style={styles.finishSubtitle}>Você concluiu seu treino!</Text>
-
-            <View style={styles.finishStatsBox}>
-              <View style={styles.finishStatsRow}>
-                <Text style={styles.finishStatsLabel}>Início</Text>
-                <Text style={styles.finishStatsValue}>
-                  {new Date(startedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                </Text>
-              </View>
-              <View style={styles.finishStatsRow}>
-                <Text style={styles.finishStatsLabel}>Fim</Text>
-                <Text style={styles.finishStatsValue}>
-                  {finishedAt
-                    ? new Date(finishedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-                    : '-'}
-                </Text>
-              </View>
-              <View style={styles.finishStatsRow}>
-                <Text style={styles.finishStatsLabel}>Tempo de treino</Text>
-                <Text style={styles.finishStatsValue}>{formatElapsed(elapsedSeconds)}</Text>
-              </View>
-            </View>
-
-            <Text style={styles.fieldLabel}>O que você achou dessa atividade?</Text>
-            <View style={styles.moodRow}>
-              {[
-                { key: 'muito_leve', label: '😴 Muito Leve' },
-                { key: 'leve', label: '🙂 Leve' },
-                { key: 'moderado', label: '💪 Moderado' },
-                { key: 'pesado', label: '🔥 Pesado' },
-                { key: 'exaustao', label: '🫠 Exaustão Máxima' },
-              ].map((m) => (
-                <TouchableOpacity
-                  key={m.key}
-                  style={[styles.moodChip, moodChoice === m.key && styles.moodChipActive]}
-                  onPress={() => setMoodChoice(m.key)}
-                >
-                  <Text style={[styles.moodChipText, moodChoice === m.key && styles.moodChipTextActive]}>{m.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.fieldLabel}>Deixe seu comentário aqui</Text>
-            <TextInput
-              style={styles.modalTextArea}
-              placeholder="Como foi o treino hoje?"
-              placeholderTextColor={colors.textDim2}
-              value={feedbackComment}
-              onChangeText={setFeedbackComment}
-              multiline
-            />
-
-            <TouchableOpacity style={styles.modalConfirm} onPress={finishWorkout} disabled={finishing}>
-              <Text style={styles.modalConfirmText}>{finishing ? 'Salvando...' : 'Concluir'}</Text>
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
     </ScrollView>
   );
 }
@@ -735,39 +655,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   timerText: { color: colors.accent, fontSize: fs(11), fontWeight: '700' },
-  finishIconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    marginBottom: vs(12),
-  },
-  finishTitle: { color: colors.text, fontSize: fs(18), fontWeight: '800', textAlign: 'center' },
-  finishSubtitle: { color: colors.textDim, fontSize: fs(11), textAlign: 'center', marginBottom: vs(16) },
-  finishStatsBox: {
-    backgroundColor: colors.surface2,
-    borderRadius: radius.md,
-    padding: 14,
-    marginBottom: vs(16),
-  },
-  finishStatsRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: vs(4) },
-  finishStatsLabel: { color: colors.textDim, fontSize: fs(10.5), fontWeight: '600' },
-  finishStatsValue: { color: colors.text, fontSize: fs(10.5), fontWeight: '700' },
-  fieldLabel: { color: colors.textDim, fontSize: fs(10.5), fontWeight: '600', marginBottom: vs(8), marginTop: vs(4) },
-  moodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: vs(16) },
-  moodChip: {
-    paddingHorizontal: s(12),
-    paddingVertical: vs(8),
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  moodChipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  moodChipText: { color: colors.textDim, fontSize: fs(10) },
-  moodChipTextActive: { color: '#04170F', fontWeight: '700' },
   exerciseBlock: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -839,7 +726,20 @@ const styles = StyleSheet.create({
     marginLeft: 'auto',
   },
   doneButtonActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  finishButton: { backgroundColor: colors.accent, borderRadius: radius.sm, padding: 16, alignItems: 'center', marginTop: vs(8) },
+  finishButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accent,
+    borderRadius: radius.sm,
+    padding: 16,
+    marginTop: vs(8),
+    shadowColor: colors.accentDark,
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
   finishButtonText: { color: '#04170F', fontWeight: '700', fontSize: fs(14) },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalBox: {

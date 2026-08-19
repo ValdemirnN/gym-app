@@ -51,7 +51,7 @@ function getDaysInMonth(year, month) {
 
 // ─── CheckinCalendarModal ──────────────────────────────────────────────────────
 
-function CheckinCalendarModal({ visible, onClose, streak, totalWorkouts, monthCheckins, allCheckinDates }) {
+function CheckinCalendarModal({ visible, onClose, streak, totalWorkouts, monthCheckins, allCheckinDates, onSelectDay }) {
   const today = new Date();
   const [viewMonth, setViewMonth] = useState({ year: today.getFullYear(), month: today.getMonth() });
 
@@ -156,9 +156,16 @@ function CheckinCalendarModal({ visible, onClose, streak, totalWorkouts, monthCh
               if (day === null) return <View key={`e-${i}`} style={styles.calCell} />;
               const isToday = isCurrentMonth && day === today.getDate();
               const trained = visibleCheckins.has(day);
+              const CellWrapper = trained ? TouchableOpacity : View;
               return (
-                <View
+                <CellWrapper
                   key={day}
+                  activeOpacity={trained ? 0.7 : 1}
+                  onPress={
+                    trained
+                      ? () => onSelectDay && onSelectDay(new Date(viewMonth.year, viewMonth.month, day))
+                      : undefined
+                  }
                   style={[
                     styles.calCell,
                     trained && styles.calCellDone,
@@ -177,7 +184,7 @@ function CheckinCalendarModal({ visible, onClose, streak, totalWorkouts, monthCh
                   {trained && (
                     <Feather name="check" size={9} color="#08120C" style={{ marginTop: 1 }} />
                   )}
-                </View>
+                </CellWrapper>
               );
             })}
           </View>
@@ -381,6 +388,10 @@ export default function HomeScreen({ navigation }) {
         totalWorkouts={totalWorkouts}
         monthCheckins={monthCheckins}
         allCheckinDates={allCheckinDates}
+        onSelectDay={(dateObj) => {
+          setCalendarVisible(false);
+          navigation.navigate('WorkoutFeedbackHistory', { filterDate: dateObj.toISOString() });
+        }}
       />
 
       <FlatList

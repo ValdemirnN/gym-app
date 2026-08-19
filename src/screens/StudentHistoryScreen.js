@@ -54,8 +54,8 @@ function groupSetsByExercise(sets) {
 }
 
 // Componente de card expandível por sessão
-function LogCard({ item, studentName }) {
-  const [expanded, setExpanded] = useState(false);
+function LogCard({ item, studentName, startExpanded }) {
+  const [expanded, setExpanded] = useState(!!startExpanded);
   const [loading, setLoading] = useState(false);
   const [exerciseGroups, setExerciseGroups] = useState(null);
   const [exerciseNotes, setExerciseNotes] = useState(null);
@@ -64,15 +64,8 @@ function LogCard({ item, studentName }) {
   const duration = formatDuration(item.started_at, item.finished_at);
   const status = item.skipped ? 'skipped' : item.finished_at ? 'done' : 'pending';
 
-  const handleExpand = async () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    if (expanded) {
-      setExpanded(false);
-      return;
-    }
-    setExpanded(true);
+  const loadDetail = async () => {
     if (exerciseGroups !== null) return; // já carregou
-
     setLoading(true);
 
     const [setsRes, statusRes, logRes] = await Promise.all([
@@ -96,6 +89,22 @@ function LogCard({ item, studentName }) {
     setExerciseNotes(statusRes.data || []);
     setLogDetail(logRes.data || null);
     setLoading(false);
+  };
+
+  // Se o card já abre expandido (vindo do calendário), carrega os detalhes de cara.
+  React.useEffect(() => {
+    if (startExpanded) loadDetail();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleExpand = async () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (expanded) {
+      setExpanded(false);
+      return;
+    }
+    setExpanded(true);
+    await loadDetail();
   };
 
   const MOOD_LABEL = {
@@ -327,6 +336,7 @@ function LogCard({ item, studentName }) {
 
 export default function StudentHistoryScreen({ route, navigation }) {
   const { studentId, studentName } = route.params;
+  const filterDate = route?.params?.filterDate || null;
   const [logs, setLogs] = useState([]);
   const [currentWorkout, setCurrentWorkout] = useState(null);
 
@@ -364,6 +374,11 @@ export default function StudentHistoryScreen({ route, navigation }) {
       )
     : null;
 
+  // Se veio de um dia específico do calendário, mostra só as sessões daquele dia
+  const displayLogs = filterDate
+    ? logs.filter((l) => new Date(l.started_at).toDateString() === new Date(filterDate).toDateString())
+    : logs;
+
   return (
     <View style={styles.container}>
       <TouchableOpacity style={styles.backRow} onPress={() => navigation.goBack()}>
@@ -392,17 +407,30 @@ export default function StudentHistoryScreen({ route, navigation }) {
         </View>
       </View>
 
-      <Text style={styles.tapHint}>Toque no card para ver detalhes e comentários</Text>
+      {filterDate ? (
+        <TouchableOpacity
+          style={styles.filterBanner}
+          onPress={() => navigation.setParams({ filterDate: null })}
+        >
+          <Feather name="calendar" size={12} color={colors.accent} />
+          <Text style={styles.filterBannerText}>Mostrando {formatDate(filterDate)}</Text>
+          <Text style={styles.filterBannerClear}>Ver todos</Text>
+        </TouchableOpacity>
+      ) : (
+        <Text style={styles.tapHint}>Toque no card para ver detalhes e comentários</Text>
+      )}
 
       <FlatList
-        data={logs}
+        data={displayLogs}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingBottom: 40 }}
         ListEmptyComponent={
-          <Text style={styles.empty}>Nenhuma sessão de treino registrada ainda.</Text>
+          <Text style={styles.empty}>
+            {filterDate ? 'Nenhum treino registrado nesse dia.' : 'Nenhuma sessão de treino registrada ainda.'}
+          </Text>
         }
-        renderItem={({ item }) => (
-          <LogCard item={item} studentName={studentName} />
+        renderItem={({ item, index }) => (
+          <LogCard item={item} studentName={studentName} startExpanded={!!filterDate && index === 0} />
         )}
       />
     </View>
@@ -438,6 +466,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
   },
+  filterBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: s(7),
+    marginBottom: vs(12),
+    backgroundColor: colors.accentGlow,
+    borderWidth: 1,
+    borderColor: `${colors.accent}44`,
+    borderRadius: radius.sm,
+    paddingHorizontal: s(12),
+    paddingVertical: vs(9),
+  },
+  filterBannerText: { color: colors.text, fontSize: fs(11), fontWeight: '600', flex: 1 },
+  filterBannerClear: { color: colors.accent, fontSize: fs(10.5), fontWeight: '700', textDecorationLine: 'underline' },
 
   empty: { color: colors.textDim, textAlign: 'center', marginTop: vs(40), fontSize: fs(12) },
 

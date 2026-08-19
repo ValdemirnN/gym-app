@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useFocusEffect } from '@react-navigation/native';
 
 export default function NotificationsScreen({ navigation }) {
-  const { session } = useAuth();
+  const { session, profile } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -48,15 +48,58 @@ export default function NotificationsScreen({ navigation }) {
     }
   };
 
+  // Leva pro lugar que gerou a notificação, de acordo com quem tá logado
+  // (personal ou aluno) e o "kind" salvo em notifications.data pelos
+  // gatilhos do banco (schema_v28_notification_deeplink.sql).
+  const handlePress = async (item) => {
+    if (!item.is_read) await markAsRead(item.id);
+
+    const kind = item.data?.kind;
+    if (!kind) return; // notificação antiga, sem metadados — só marca como lida
+
+    const isPersonal = profile?.role === 'personal';
+
+    if (isPersonal) {
+      switch (kind) {
+        case 'workout_finished':
+        case 'workout_feedback':
+        case 'workout_skipped':
+          navigation.navigate('PersonalStudents', {
+            screen: 'StudentHistory',
+            params: { studentId: item.data.studentId, studentName: item.data.studentName },
+          });
+          return;
+        default:
+          return;
+      }
+    }
+
+    // Aluno
+    switch (kind) {
+      case 'new_workout':
+        navigation.navigate('Workouts', {
+          screen: 'WorkoutDetail',
+          params: { workoutId: item.data.workoutId },
+        });
+        return;
+      case 'personal_reply':
+        navigation.navigate('WorkoutFeedbackHistory');
+        return;
+      default:
+        return;
+    }
+  };
+
   const renderItem = ({ item }) => {
     const { icon, color } = getNotificationStyle(item.type);
     const isUnread = !item.is_read;
+    const isNavigable = !!item.data?.kind;
 
     return (
       <TouchableOpacity
         style={[styles.notificationCard, isUnread && styles.unreadCard]}
         activeOpacity={0.7}
-        onPress={() => markAsRead(item.id)}
+        onPress={() => handlePress(item)}
       >
         <View style={[styles.iconContainer, { backgroundColor: `${color}20` }]}>
           <Ionicons name={icon} size={24} color={color} />
@@ -68,6 +111,7 @@ export default function NotificationsScreen({ navigation }) {
             {new Date(item.created_at).toLocaleDateString('pt-BR')}
           </Text>
         </View>
+        {isNavigable && <Ionicons name="chevron-forward" size={18} color="#52525B" style={{ marginLeft: 4 }} />}
         {isUnread && <View style={styles.unreadDot} />}
       </TouchableOpacity>
     );

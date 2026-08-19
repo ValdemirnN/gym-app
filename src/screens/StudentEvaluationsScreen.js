@@ -214,6 +214,50 @@ export default function StudentEvaluationsScreen({ route, navigation }) {
     load();
   };
 
+  const deleteGoal = (goal) => {
+    Alert.alert(
+      'Apagar meta',
+      `Tem certeza que quer apagar a meta "${goal.description}"? Essa ação não pode ser desfeita.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Apagar',
+          style: 'destructive',
+          onPress: async () => {
+            const { error } = await supabase.from('goals').delete().eq('id', goal.id);
+            if (error) {
+              Alert.alert('Erro', error.message);
+              return;
+            }
+            load();
+          },
+        },
+      ]
+    );
+  };
+
+  const deleteEvaluation = (evaluation) => {
+    Alert.alert(
+      'Apagar avaliação',
+      `Tem certeza que quer apagar a avaliação de ${formatDate(evaluation.evaluation_date)}? Essa ação não pode ser desfeita.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Apagar',
+          style: 'destructive',
+          onPress: async () => {
+            const { error } = await supabase.from('evaluations').delete().eq('id', evaluation.id);
+            if (error) {
+              Alert.alert('Erro', error.message);
+              return;
+            }
+            load();
+          },
+        },
+      ]
+    );
+  };
+
   const first = evaluations[evaluations.length - 1];
   const last = evaluations[0];
 
@@ -306,17 +350,29 @@ export default function StudentEvaluationsScreen({ route, navigation }) {
         </View>
         {goals.length === 0 && <Text style={styles.empty}>Nenhuma meta cadastrada ainda.</Text>}
         {goals.map((g) => (
-          <TouchableOpacity key={g.id} style={styles.goalRow} onPress={() => toggleAchieved(g)}>
-            <Feather
-              name={g.achieved ? 'check-circle' : 'circle'}
-              size={20}
-              color={g.achieved ? colors.accent : colors.textDim2}
-            />
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.goalText, g.achieved && styles.goalTextDone]}>{g.description}</Text>
-              {g.target_date ? <Text style={styles.goalDate}>Até {formatDate(g.target_date)}</Text> : null}
-            </View>
-          </TouchableOpacity>
+          <View key={g.id} style={styles.goalRow}>
+            <TouchableOpacity
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}
+              onPress={() => toggleAchieved(g)}
+            >
+              <Feather
+                name={g.achieved ? 'check-circle' : 'circle'}
+                size={20}
+                color={g.achieved ? colors.accent : colors.textDim2}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.goalText, g.achieved && styles.goalTextDone]}>{g.description}</Text>
+                {g.target_date ? <Text style={styles.goalDate}>Até {formatDate(g.target_date)}</Text> : null}
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => deleteGoal(g)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.goalDeleteBtn}
+            >
+              <Feather name="trash-2" size={16} color={colors.textDim2} />
+            </TouchableOpacity>
+          </View>
         ))}
 
         <View style={styles.sectionHeader}>
@@ -328,7 +384,15 @@ export default function StudentEvaluationsScreen({ route, navigation }) {
         {evaluations.length === 0 && <Text style={styles.empty}>Nenhuma avaliação registrada ainda.</Text>}
         {evaluations.map((ev) => (
           <View key={ev.id} style={styles.evalCard}>
-            <Text style={styles.evalDate}>{formatDate(ev.evaluation_date)}</Text>
+            <View style={styles.evalHeaderRow}>
+              <Text style={styles.evalDate}>{formatDate(ev.evaluation_date)}</Text>
+              <TouchableOpacity
+                onPress={() => deleteEvaluation(ev)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Feather name="trash-2" size={15} color={colors.textDim2} />
+              </TouchableOpacity>
+            </View>
             <View style={styles.evalGrid}>
               {ev.weight_kg ? <Text style={styles.evalItem}>Peso: {ev.weight_kg} kg</Text> : null}
               {ev.body_fat_pct ? <Text style={styles.evalItem}>Gordura: {ev.body_fat_pct}%</Text> : null}
@@ -472,6 +536,7 @@ const styles = StyleSheet.create({
   goalText: { color: colors.text, fontSize: fs(12), fontWeight: '600' },
   goalTextDone: { textDecorationLine: 'line-through', color: colors.textDim },
   goalDate: { color: colors.textDim, fontSize: fs(9), marginTop: vs(2) },
+  goalDeleteBtn: { paddingLeft: s(10) },
   evalCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -480,7 +545,8 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: vs(10),
   },
-  evalDate: { color: colors.accent, fontSize: fs(11), fontWeight: '700', marginBottom: vs(8) },
+  evalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: vs(8) },
+  evalDate: { color: colors.accent, fontSize: fs(11), fontWeight: '700' },
   evalGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   evalItem: { color: colors.text, fontSize: fs(10.5) },
   evalNotes: { color: colors.textDim, fontSize: fs(10), marginTop: vs(8), fontStyle: 'italic' },
