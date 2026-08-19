@@ -61,6 +61,9 @@ import StudentEvolutionScreen from '../screens/StudentEvolutionScreen';
 // <<<--- NOVA TELA: Histórico de Feedbacks do aluno --->>>
 import WorkoutFeedbackHistoryScreen from '../screens/WorkoutFeedbackHistoryScreen';
 
+// <<<--- NOVA TELA: Resumo/Finalização do Treino --->>>
+import WorkoutSummaryScreen from '../screens/WorkoutSummaryScreen';
+
 const AuthStack = createNativeStackNavigator();
 const RootStack = createNativeStackNavigator();
 const ClientChatStackNav = createNativeStackNavigator();
@@ -148,6 +151,7 @@ function WorkoutsStack() {
       <RootStack.Screen name="CreateWorkout" component={CreateWorkoutScreen} />
       <RootStack.Screen name="WorkoutDetail" component={WorkoutDetailScreen} />
       <RootStack.Screen name="ActiveWorkout" component={ActiveWorkoutScreen} />
+      <RootStack.Screen name="WorkoutSummary" component={WorkoutSummaryScreen} />
       <RootStack.Screen name="UploadVideo" component={UploadVideoScreen} />
       <RootStack.Screen name="VideoPlayer" component={VideoPlayerScreen} />
       {/* <<<--- Histórico de Feedbacks do aluno --->>> */}
